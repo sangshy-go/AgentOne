@@ -4,6 +4,10 @@
 
 **开源 AI Agent 中台 —— 像搭表单一样构建你的企业级 AI 助手**
 
+完全私有部署 · 数据不出域 · 源码自主可控 · 对话可留痕
+
+*On-premise AI Agent platform for regulated industries — banking, insurance, and state-owned enterprises.*
+
 配置模型 → 建立知识库 → 创建 Agent → 开始对话 → API 接入，五步跑通
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
@@ -27,9 +31,9 @@ AgentOne 是一个**开箱即用的 AI Agent 中台**。它把构建 AI 助手�
 
 **适合谁用？**
 
+- **银行 / 保险 / 金融 / 国企**：一键私有部署、数据不出域、源码自主可控的合规向 AI 中台（见 [ 合规与安全](#-合规与安全)）
 - 想快速给团队/产品加 AI 能力的**业务团队**（配置即用，API 接入）
 - 想系统学习 **Agent / RAG 工程实践**的**开发者**（完整源码 + 深度技术文档）
-- 需要**私有化部署**、数据不出域的企业（Docker 一键部署，模型可接任意 OpenAI 兼容服务）
 
 ## ✨ 核心特性
 
@@ -43,6 +47,23 @@ AgentOne 是一个**开箱即用的 AI Agent 中台**。它把构建 AI 助手�
 | 🏢 **多租户安全** | 工作空间级数据隔离；Sa-Token JWT 认证；邮箱注册/登录 + 登录失败限流；BCrypt 密码哈希 |
 | 🖥 **完整管理后台** | Vue 3 + Naive UI：Agent 六维配置、对话测试面板、知识库管理、模型管理、API Key 管理，全部可视化 |
 | 🐳 **一键部署** | 根目录 `docker compose up` 同时拉起 PostgreSQL、Redis、后端、前端；Flyway 自动建表迁移 |
+
+## 🛡 合规与安全
+
+> 面向银行 / 保险 / 金融 / 国企等高合规行业：**只宣传已交付的能力，增强项如实标注路线图**。
+
+| 你关心的 | AgentOne 的回答 | 状态 |
+|---------|----------------|------|
+| 数据不能出域 | 全私有部署（源码 / Docker），无强制外联；模型可接内网部署（Ollama 等）或国产大模型（通义 / DeepSeek / GLM 等 OpenAI 兼容协议） | ✅ 已具备 |
+| 源码自主可控 | MIT 开源，全链路代码可审计，无供应商黑盒 | ✅ 已具备 |
+| 多部门数据隔离 | 工作空间级多租户隔离 + MyBatis-Plus 租户拦截器兜底 | ✅ 已具备 |
+| 凭据与账号安全 | 密码 BCrypt 哈希；API Key 仅存 SHA-256 哈希、不留明文；JWT 过期机制；登录失败锁定（阈值/时长可配置） | ✅ 已具备 |
+| 对话可留痕 | 对话全量持久化（含 trace_id、Skill 调用快照、耗时），可回溯任意一轮问答的完整上下文 | ✅ 已具备 |
+| 企业 IT 可接管 | Java 17 + Spring Boot 企业级技术栈，Flyway 迁移管理；企业科技部门二开、运维、审计代码无门槛 | ✅ 已具备 |
+| 细粒度权限 | RBAC 角色权限（管理员 / 开发者 / 运营等） | 🔜 Phase 2 |
+| 审计与监控看板 | 调用链审计（`audit_log` / `skill_call_log` 表结构已预留）、对话日志与监控仪表盘 | 🔜 Phase 2 |
+
+欢迎金融同业在 [Issues](https://github.com/sangshy-go/AgentOne/issues) 提出合规要求（等保、审计、信创适配等），优先排进迭代计划。
 
 ## 🖼 界面预览
 
@@ -235,7 +256,7 @@ Agent 未指定 Chat 模型时会回退到全局默认（`api.openai.com`，国�
 ## 🗺 路线图
 
 - ✅ **Phase 1（MVP，已完成）**：Agent 引擎（ReAct + SSE）· 知识库 RAG · 模型管理 · 内置 Skill · 开放 API · 完整管理后台 · Docker 一键部署
-- 🔜 **Phase 2（进行中）**：Skill 中心（技能市场 / 安装 / 调试器）· MCP 集成 · IM Bot 网关（企微 / 钉钉）· 监控仪表盘 · RBAC 权限
+- 🔜 **Phase 2（进行中）**：Skill 中心（技能市场 / 安装 / 调试器）· MCP 集成 · IM Bot 网关（企微 / 钉钉）· 监控与审计看板 · RBAC 细粒度权限
 
 欢迎在 [Issues](https://github.com/sangshy-go/AgentOne/issues) 提出你最需要的能力。
 
