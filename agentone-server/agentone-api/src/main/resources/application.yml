@@ -1,0 +1,126 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: agentone-server
+
+  # ============================================================
+  # 文件上传配置
+  # ============================================================
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 60MB
+
+  # ============================================================
+  # 数据源配置
+  # ============================================================
+  datasource:
+    url: jdbc:postgresql://localhost:5433/agentone?stringtype=unspecified
+    username: agentone
+    password: agentone123
+    driver-class-name: org.postgresql.Driver
+
+  # ============================================================
+  # Redis 配置
+  # ============================================================
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: agentone123
+
+  # ============================================================
+  # Flyway 数据库迁移
+  # ============================================================
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  # ============================================================
+  # MyBatis-Plus 配置
+  # ============================================================
+  mybatis-plus:
+    configuration:
+      map-underscore-to-camel-case: true
+      log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+    global-config:
+      db-config:
+        id-type: assign_uuid
+        logic-delete-field: deletedAt
+        logic-delete-value: now()
+        logic-not-delete-value: "null"
+    type-enums-package: com.agentone.**.enums
+
+  # ============================================================
+  # Spring AI 配置（Embedding 模型 + PgVector 向量存储）
+  # ============================================================
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:sk-placeholder}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+      embedding:
+        options:
+          model: text-embedding-3-small
+    vectorstore:
+      pgvector:
+        dimensions: 1536
+        index-type: IVFFLAT
+        distance-type: COSINE_DISTANCE
+        initialize-schema: false
+        # 业务侧 ID 使用 MyBatis-Plus 的 ASSIGN_UUID（32 位 hex，不带连字符）
+        # 必须配置为 TEXT，否则 Spring AI 默认按 UUID 解析会抛 IllegalArgumentException
+        id-type: TEXT
+
+# ============================================================
+# AgentScope Java 2.0 配置（Agent 引擎）
+# ============================================================
+agentscope:
+  model:
+    provider: openai
+  openai:
+    enabled: true
+    api-key: ${OPENAI_API_KEY:sk-placeholder}
+    model-name: ${AGENT_MODEL:gpt-4o-mini}
+    base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+    stream: true
+  agent:
+    enabled: true
+    max-iters: 10
+
+# ============================================================
+# AgentOne 自定义配置
+# ============================================================
+agentone:
+  jwt:
+    # S1: 不再提供弱默认密钥；JWT_SECRET 为空时应用启动直接失败（fail-closed）。
+    # 生产环境必须在 .env 中设置强随机密钥：JWT_SECRET=$(openssl rand -base64 48)
+    secret: ${JWT_SECRET:}
+    expire-hours: 24
+    # C2: refresh token 有效时长（小时），默认 7 天
+    refresh-expire-hours: 168
+    # 本地开发逃生开关：true 时允许使用已知弱默认密钥（禁止用于生产）
+    allow-insecure-default: ${AGENTONE_ALLOW_INSECURE_JWT:false}
+  # Q6: 原先硬编码的魔法数字集中外置，便于运维调参
+  chat:
+    max-iters: 10                 # ReAct 最大迭代步数（原硬编码 10）
+    rag-max-tokens: 3000          # RAG 上下文最大 token 预算（原硬编码 3000）
+  async:
+    core-pool-size: 2             # 文档处理线程池核心线程数
+    max-pool-size: 4              # 文档处理线程池最大线程数
+    queue-capacity: 100           # 文档处理线程池队列容量
+  auth:
+    max-login-fail: 5             # 登录失败锁定阈值（原硬编码 5）
+    lock-minutes: 30              # 登录失败锁定时长（分钟，原硬编码 30）
+
+# ============================================================
+# 日志配置
+# ============================================================
+logging:
+  level:
+    com.agentone: DEBUG
+    org.springframework.ai: INFO
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"

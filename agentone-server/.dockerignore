@@ -1,0 +1,8 @@
+**/target/
+.git/
+.idea/
+*.iml
+*.md
+docker/
+start.sh
+.DS_Store

@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # ============================================================
+  # PostgreSQL 16 + PgVector 向量扩展
+  # ============================================================
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: agentone-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-agentone}
+      POSTGRES_USER: ${POSTGRES_USER:-agentone}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agentone123}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agentone}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
+  # Redis 7（会话缓存、分布式锁、流式缓冲）
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: agentone-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD:-agentone123} --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-agentone123}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
+  # MinIO（S3 兼容文件存储 - 知识库文档、附件）
+  # ============================================================
+  minio:
+    image: minio/minio:latest
+    container_name: agentone-minio
+    restart: unless-stopped
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-agentone}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-agentone123}
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local

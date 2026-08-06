@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.agentone</groupId>
+        <artifactId>agentone-server</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>agentone-agent</artifactId>
+    <name>AgentOne Agent</name>
+    <description>Agent 引擎模块 - AgentScope 集成、ReAct 循环、会话管理</description>
+
+    <dependencies>
+        <!-- 依赖 common 模块 -->
+        <dependency>
+            <groupId>com.agentone</groupId>
+            <artifactId>agentone-common</artifactId>
+        </dependency>
+
+        <!-- 依赖 skill 模块 -->
+        <dependency>
+            <groupId>com.agentone</groupId>
+            <artifactId>agentone-skill</artifactId>
+        </dependency>
+
+        <!-- 依赖 knowledge 模块（RAG 检索） -->
+        <dependency>
+            <groupId>com.agentone</groupId>
+            <artifactId>agentone-knowledge</artifactId>
+        </dependency>
+
+        <!-- AgentScope Java 2.0 核心 + OpenAI 扩展 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-harness</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-model-openai</artifactId>
+        </dependency>
+
+        <!-- Spring Boot Redis（会话缓存、流式缓冲） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>

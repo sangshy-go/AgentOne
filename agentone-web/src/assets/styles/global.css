@@ -1,0 +1,530 @@
+/* ============================================================
+   AgentOne — Design Token System
+   科技感 + 年轻感：渐变辉光 / 毛玻璃 / 动态效果
+   ============================================================ */
+
+:root {
+  /* 主色：靛蓝→紫罗兰→青 渐变体系 */
+  --primary: #6366F1;
+  --primary-hover: #4F46E5;
+  --primary-light: #EEF2FF;
+  --primary-bg: #F5F3FF;
+  --primary-border: #C7D2FE;
+  --primary-glow: rgba(99, 102, 241, 0.35);
+  --primary-glow-strong: rgba(99, 102, 241, 0.5);
+
+  /* 渐变 */
+  --grad-primary: linear-gradient(135deg, #6366F1 0%, #8B5CF6 50%, #06B6D4 100%);
+  --grad-primary-2: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+  --grad-blue: linear-gradient(135deg, #3B82F6 0%, #06B6D4 100%);
+  --grad-purple: linear-gradient(135deg, #8B5CF6 0%, #EC4899 100%);
+  --grad-green: linear-gradient(135deg, #10B981 0%, #06B6D4 100%);
+  --grad-orange: linear-gradient(135deg, #F59E0B 0%, #EF4444 100%);
+  --grad-text: linear-gradient(135deg, #6366F1 0%, #8B5CF6 50%, #06B6D4 100%);
+
+  /* 表面 */
+  --surface: #FFFFFF;
+  --surface-alt: #F8FAFF;
+  --bg: #EEF2FF;
+
+  /* 边框 */
+  --border: #E2E8F0;
+  --border-light: #EEF2FF;
+  --border-strong: #CBD5E1;
+
+  /* 文字 */
+  --text: #0F172A;
+  --text-secondary: #475569;
+  --text-muted: #64748B;
+  --text-placeholder: #94A3B8;
+
+  /* 阴影 + 辉光 */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.1);
+  --shadow-xl: 0 24px 56px rgba(15, 23, 42, 0.14);
+  --glow-primary: 0 0 24px rgba(99, 102, 241, 0.25);
+  --glow-primary-md: 0 8px 32px rgba(99, 102, 241, 0.3);
+  --glow-blue: 0 0 24px rgba(59, 130, 246, 0.25);
+  --glow-purple: 0 0 24px rgba(139, 92, 246, 0.25);
+
+  /* 状态色 */
+  --green: #10B981;
+  --green-bg: #ECFDF5;
+  --green-border: #A7F3D0;
+  --orange: #F59E0B;
+  --orange-bg: #FFFBEB;
+  --orange-border: #FDE68A;
+  --red: #EF4444;
+  --red-bg: #FEF2F2;
+  --red-border: #FECACA;
+  --purple: #8B5CF6;
+  --purple-bg: #F5F3FF;
+  --purple-border: #DDD6FE;
+  --indigo: #6366F1;
+  --indigo-bg: #EEF2FF;
+  --indigo-border: #C7D2FE;
+  --blue: #3B82F6;
+  --blue-bg: #EFF6FF;
+  --blue-border: #BFDBFE;
+  --cyan: #06B6D4;
+  --cyan-bg: #ECFEFF;
+  --cyan-border: #A5F3FC;
+
+  /* 圆角 */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 28px;
+  --radius-full: 9999px;
+
+  /* 布局 */
+  --sidebar-w: 260px;
+  --header-h: 64px;
+
+  /* 动画 */
+  --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* 旧变量兼容 */
+  --color-primary: #6366F1;
+  --color-primary-hover: #4F46E5;
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-danger: #EF4444;
+  --color-bg: #EEF2FF;
+  --color-surface: #FFFFFF;
+  --color-text: #0F172A;
+  --color-text-muted: #64748B;
+  --color-border: #E2E8F0;
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: var(--text);
+  background: #F0F2F8;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--primary-hover);
+}
+
+::selection {
+  background: var(--primary);
+  color: white;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--primary-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+
+/* ============================================================
+   Typography — 渐变标题
+   ============================================================ */
+.page-title {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.8px;
+  margin-bottom: 6px;
+  line-height: 1.2;
+  background: var(--grad-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.page-desc {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-bottom: 28px;
+  font-weight: 500;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 16px;
+  letter-spacing: -0.3px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.section-title::before {
+  content: '';
+  width: 4px;
+  height: 20px;
+  border-radius: 2px;
+  background: var(--grad-primary);
+}
+
+/* ============================================================
+   Card — 白色卡片 + 阴影
+   ============================================================ */
+.page-card {
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 24px;
+  box-shadow: var(--shadow);
+  transition: var(--transition);
+  position: relative;
+  overflow: hidden;
+}
+
+.page-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
+}
+
+/* ============================================================
+   Stat Card — Dashboard 统计卡片
+   ============================================================ */
+.stat-card {
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 24px;
+  box-shadow: var(--shadow);
+  transition: var(--transition);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -30%;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: var(--grad-primary);
+  opacity: 0.06;
+  filter: blur(40px);
+  transition: var(--transition);
+}
+
+.stat-card:hover {
+  box-shadow: var(--shadow-lg), var(--glow-primary);
+  transform: translateY(-4px);
+}
+
+.stat-card:hover::after {
+  opacity: 0.12;
+  transform: scale(1.2);
+}
+
+.stat-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  font-size: 24px;
+}
+
+.stat-value {
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: -1.5px;
+  line-height: 1.1;
+  background: var(--grad-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.stat-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+  font-weight: 600;
+}
+
+/* ============================================================
+   Button — 渐变 + 辉光
+   ============================================================ */
+.btn-gradient {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 18px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  transition: var(--transition);
+  white-space: nowrap;
+  background: var(--grad-primary-2);
+  color: white;
+  box-shadow: var(--glow-primary);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-gradient:hover {
+  box-shadow: var(--glow-primary-md), 0 8px 20px rgba(99, 102, 241, 0.3);
+  transform: translateY(-2px);
+}
+
+.btn-gradient::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.5s;
+}
+
+.btn-gradient:hover::after {
+  left: 100%;
+}
+
+/* ============================================================
+   Badge — 状态徽标
+   ============================================================ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.badge-success {
+  background: var(--green-bg);
+  color: var(--green);
+  border-color: var(--green-border);
+}
+
+.badge-warning {
+  background: var(--orange-bg);
+  color: var(--orange);
+  border-color: var(--orange-border);
+}
+
+.badge-danger {
+  background: var(--red-bg);
+  color: var(--red);
+  border-color: var(--red-border);
+}
+
+.badge-info {
+  background: var(--blue-bg);
+  color: var(--blue);
+  border-color: var(--blue-border);
+}
+
+.badge-purple {
+  background: var(--purple-bg);
+  color: var(--purple);
+  border-color: var(--purple-border);
+}
+
+.badge-indigo {
+  background: var(--indigo-bg);
+  color: var(--indigo);
+  border-color: var(--indigo-border);
+}
+
+.badge-neutral {
+  background: var(--surface-alt);
+  color: var(--text-secondary);
+  border-color: var(--border);
+}
+
+/* ============================================================
+   Status Pill — 状态胶囊（呼吸点 + 中文状态）
+   ============================================================ */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: #F8FAFC;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-placeholder);
+  flex-shrink: 0;
+}
+
+/* 已发布：绿色呼吸点，表示"在线可用" */
+.status-published {
+  color: var(--green);
+  background: var(--green-bg);
+  border-color: var(--green-border);
+}
+
+.status-published .status-dot {
+  background: var(--green);
+  animation: pulseGreen 2s ease-in-out infinite;
+}
+
+/* 测试中：蓝色呼吸点，表示"联调进行中" */
+.status-testing {
+  color: var(--blue);
+  background: var(--blue-bg);
+  border-color: var(--blue-border);
+}
+
+.status-testing .status-dot {
+  background: var(--blue);
+  animation: pulseBlue 2s ease-in-out infinite;
+}
+
+/* 草稿：灰色空心点，表示"未上线" */
+.status-draft .status-dot {
+  background: transparent;
+  border: 1.5px solid var(--text-placeholder);
+}
+
+/* 已停用：红色实心点 */
+.status-stopped {
+  color: var(--red);
+  background: var(--red-bg);
+  border-color: var(--red-border);
+}
+
+.status-stopped .status-dot {
+  background: var(--red);
+}
+
+/* 已归档：深灰，弱化展示 */
+.status-archived {
+  color: var(--text-secondary);
+  background: #F1F5F9;
+  border-color: var(--border);
+}
+
+.status-archived .status-dot {
+  background: var(--text-secondary);
+}
+
+@keyframes pulseGreen {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(16, 185, 129, 0); }
+}
+
+@keyframes pulseBlue {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-published .status-dot,
+  .status-testing .status-dot {
+    animation: none;
+  }
+}
+
+/* ============================================================
+   Animations
+   ============================================================ */
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: var(--glow-primary); }
+  50% { box-shadow: var(--glow-primary-md); }
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.95) translateY(16px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================
+   Responsive
+   ============================================================ */
+@media (max-width: 1440px) {
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 1024px) {
+  .stat-grid { grid-template-columns: 1fr; }
+}
