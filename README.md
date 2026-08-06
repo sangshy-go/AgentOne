@@ -237,7 +237,17 @@ Agent 未指定 Chat 模型时会回退到全局默认（`api.openai.com`，国�
 - ✅ **Phase 1（MVP，已完成）**：Agent 引擎（ReAct + SSE）· 知识库 RAG · 模型管理 · 内置 Skill · 开放 API · 完整管理后台 · Docker 一键部署
 - 🔜 **Phase 2（进行中）**：Skill 中心（技能市场 / 安装 / 调试器）· MCP 集成 · IM Bot 网关（企微 / 钉钉）· 监控仪表盘 · RBAC 权限
 
-Phase 2 在独立分支开发，完成后合入主线。欢迎在 [Issues](https://github.com/sangshy-go/AgentOne/issues) 提出你最需要的能力。
+欢迎在 [Issues](https://github.com/sangshy-go/AgentOne/issues) 提出你最需要的能力。
+
+**分支策略（便于学习每个阶段的演进）**：
+
+| 分支 | 内容 |
+|------|------|
+| `main` | 最新稳定版（各阶段完成并验证后合入） |
+| `phase-1` | Phase 1 MVP 冻结快照，不再改动 |
+| `phase-2` / `phase-3` | 对应阶段的完整开发历史，从上一阶段终点拉出 |
+
+想看某个阶段"到底加了什么"，对比相邻分支即可，例如 `git diff phase-1..phase-2`。
 
 ## 🤝 贡献
 
