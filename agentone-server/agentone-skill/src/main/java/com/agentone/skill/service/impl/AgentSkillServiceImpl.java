@@ -30,9 +30,12 @@ import java.util.stream.Collectors;
 /**
  * Agent-Skill 绑定服务实现。
  *
- * builtin Skill 采用"虚拟挂载"：不落 skill 表，列表/绑定时从 SkillRegistry 合并，
- * 绑定关系仍落 agent_skill_binding（租户拦截器保证隔离）；
- * skill 表只存 api / market 等用户创建的 Skill。
+ * builtin Skill 与 MCP 工具（课题④）采用"虚拟挂载"：不落 skill 表，
+ * 列表/绑定时从 SkillRegistry 合并，绑定关系仍落 agent_skill_binding
+ * （租户拦截器保证隔离）；skill 表只存 api / market 等用户创建的 Skill。
+ *
+ * 租户边界：虚拟 Skill 中 MCP 工具的描述符携带归属 workspaceId，
+ * 列表只合并本空间的，绑定前校验归属（builtin workspaceId=null 全局可见）。
  */
 @Service
 @RequiredArgsConstructor
@@ -56,16 +59,22 @@ public class AgentSkillServiceImpl implements AgentSkillService {
             throw new BusinessException(5001, "该 Agent 已绑定此 Skill");
         }
 
-        // Skill 存在性：DB 行（api/market）或 Registry 虚拟 builtin
+        // Skill 存在性：DB 行（api/market）或 Registry 虚拟挂载（builtin/mcp）
         SkillDO skill = skillMapper.selectById(dto.getSkillId());
-        SkillDescriptor builtin = skill == null ? descriptorOf(dto.getSkillId()) : null;
-        if (skill == null && builtin == null) {
+        SkillDescriptor virtual = skill == null ? descriptorOf(dto.getSkillId()) : null;
+        if (skill == null && virtual == null) {
             throw new BusinessException(5002, "Skill 不存在");
         }
 
-        // S3: 跨租户防护——DB 行 Skill 仅允许绑定当前工作空间的；builtin 全局可见无需校验
+        // S3: 跨租户防护——DB 行 Skill 仅允许绑定当前工作空间的；
+        // 虚拟 Skill 按描述符 workspaceId 校验（MCP 工具归属创建它的空间，
+        // builtin workspaceId=null 全局可见）
         String wsId = RuntimeContext.getWorkspaceId();
         if (skill != null && !wsId.equals(skill.getWorkspaceId())) {
+            throw new BusinessException(5004, "无权绑定其他工作空间的 Skill");
+        }
+        if (virtual != null && virtual.getWorkspaceId() != null
+                && !wsId.equals(virtual.getWorkspaceId())) {
             throw new BusinessException(5004, "无权绑定其他工作空间的 Skill");
         }
 
@@ -75,7 +84,7 @@ public class AgentSkillServiceImpl implements AgentSkillService {
         binding.setAgentId(dto.getAgentId());
         binding.setSkillId(dto.getSkillId());
         binding.setSkillVersion(dto.getSkillVersion() != null ? dto.getSkillVersion()
-                : skill != null ? skill.getVersion() : builtin.getVersion());
+                : skill != null ? skill.getVersion() : virtual.getVersion());
         binding.setConfigOverride(dto.getConfigOverride() != null ? dto.getConfigOverride() : "{}");
         binding.setEnabled(true);
         binding.setCreatedAt(LocalDateTime.now());
@@ -135,13 +144,13 @@ public class AgentSkillServiceImpl implements AgentSkillService {
                 .collect(Collectors.toList());
         long total = result.getTotal();
 
-        // builtin 虚拟挂载：第一页置顶合并
-        List<SkillVO> builtins = builtinVOs();
-        if (page == 1 && !builtins.isEmpty()) {
-            List<SkillVO> merged = new ArrayList<>(builtins);
+        // 虚拟挂载（builtin + 本空间 MCP 工具）：第一页置顶合并
+        List<SkillVO> virtuals = virtualVOs(workspaceId);
+        if (page == 1 && !virtuals.isEmpty()) {
+            List<SkillVO> merged = new ArrayList<>(virtuals);
             merged.addAll(records);
             records = merged;
-            total += builtins.size();
+            total += virtuals.size();
         }
 
         Page<SkillVO> voPage = new Page<>(result.getCurrent(), result.getSize(), total);
@@ -149,15 +158,21 @@ public class AgentSkillServiceImpl implements AgentSkillService {
         return PageResult.of(voPage);
     }
 
-    /** 从 Registry 合成 builtin Skill 的 VO（不落库） */
-    private List<SkillVO> builtinVOs() {
+    /**
+     * 从 Registry 合成虚拟挂载 Skill 的 VO（不落库）：
+     * builtin 全局可见；MCP 工具仅合并归属当前工作空间的（描述符带 workspaceId）。
+     */
+    private List<SkillVO> virtualVOs(String workspaceId) {
+        // 只合并虚拟类型：builtin 全局 + mcp 限本空间。
+        // api 类型虽也在 Registry，但已由 DB 分页查询返回，且跨租户注册，不可在此合并。
         return skillRegistry.listDescriptors().stream()
-                .filter(d -> "builtin".equals(d.getType()))
+                .filter(d -> "builtin".equals(d.getType())
+                        || ("mcp".equals(d.getType()) && workspaceId.equals(d.getWorkspaceId())))
                 .map(d -> {
                     SkillVO vo = new SkillVO();
                     vo.setId(d.getId());
                     vo.setName(d.getName());
-                    vo.setType("builtin");
+                    vo.setType(d.getType());
                     vo.setSource(d.getSource());
                     vo.setDescription(d.getDescription());
                     vo.setInputSchema(toJson(d.getInputSchema()));

@@ -22,6 +22,12 @@
             <artifactId>agentone-common</artifactId>
         </dependency>
 
+        <!-- AgentScope Core：MCP 客户端（McpClientBuilder，支持 stdio/SSE/streamable-http） -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-core</artifactId>
+        </dependency>
+
         <!-- Spring Web（Controller） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

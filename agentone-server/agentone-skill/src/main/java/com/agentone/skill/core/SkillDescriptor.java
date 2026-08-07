@@ -37,6 +37,13 @@ public class SkillDescriptor {
     /** 来源标识 */
     private String source;
 
+    /**
+     * 归属工作空间。
+     * builtin 为 null（全局可见）；api / mcp 为所属工作空间，
+     * 列表合并/绑定/调试目标列举/直接测试时据此做租户过滤，防止跨租户泄露。
+     */
+    private String workspaceId;
+
     /** 是否启用 */
     private boolean enabled;
 }

@@ -144,6 +144,16 @@ const navGroups = [
         label: '知识库',
         icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>',
       },
+      {
+        key: 'Skills',
+        label: 'Skill 中心',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>',
+      },
+      {
+        key: 'Mcp',
+        label: 'MCP 集成',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 2v6M15 2v6"/><path d="M6 8h12v4a6 6 0 01-6 6 6 6 0 01-6-6V8z"/><path d="M12 18v4"/></svg>',
+      },
     ],
   },
   {
@@ -180,6 +190,8 @@ const currentRouteName = computed(() => {
     Agents: 'Agent 管理',
     AgentDetail: 'Agent 详情',
     Knowledge: '知识库',
+    Skills: 'Skill 中心',
+    Mcp: 'MCP 集成',
     Models: '模型管理',
     ApiKeys: 'API Key',
     Settings: '工作空间',

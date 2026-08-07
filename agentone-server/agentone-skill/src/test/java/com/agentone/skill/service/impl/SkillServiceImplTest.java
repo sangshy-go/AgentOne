@@ -3,6 +3,7 @@ package com.agentone.skill.service.impl;
 import com.agentone.common.context.Context;
 import com.agentone.common.context.RuntimeContext;
 import com.agentone.common.exception.BusinessException;
+import com.agentone.skill.core.SkillDescriptor;
 import com.agentone.skill.core.SkillExecutor;
 import com.agentone.skill.core.SkillRegistry;
 import com.agentone.skill.core.SkillResult;
@@ -213,6 +214,9 @@ class SkillServiceImplTest {
     void test_executorInRegistry_executesDirectly() {
         SkillExecutor executor = org.mockito.Mockito.mock(SkillExecutor.class);
         when(executor.execute(any(), any())).thenReturn(SkillResult.success(Map.of("ok", true), 1L));
+        // 描述符未标注归属空间（builtin 语义，全局可见）→ 允许直接测试
+        when(executor.getDescriptor()).thenReturn(
+                SkillDescriptor.builder().id("skill-1").type("builtin").build());
         when(skillRegistry.getExecutor("skill-1")).thenReturn(Optional.of(executor));
 
         SkillResult result = skillService.test("skill-1", Map.of("city", "北京"));
@@ -220,6 +224,19 @@ class SkillServiceImplTest {
         assertTrue(result.isSuccess());
         assertEquals(true, result.getData().get("ok"));
         verify(skillMapper, never()).selectById(any());
+    }
+
+    @Test
+    void test_crossTenantExecutor_throws5004() {
+        SkillExecutor executor = org.mockito.Mockito.mock(SkillExecutor.class);
+        when(executor.getDescriptor()).thenReturn(
+                SkillDescriptor.builder().id("skill-x").type("api").workspaceId("ws-2").build());
+        when(skillRegistry.getExecutor("skill-x")).thenReturn(Optional.of(executor));
+
+        BusinessException e = assertThrows(BusinessException.class,
+                () -> skillService.test("skill-x", Map.of()));
+        assertEquals(5004, e.getCode(), "Registry 跨租户共享，必须按描述符归属拦截");
+        verify(executor, never()).execute(any(), any());
     }
 
     @Test

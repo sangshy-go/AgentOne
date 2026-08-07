@@ -121,6 +121,8 @@ public class ApiSkillExecutor implements SkillExecutor {
                 .type("api")
                 .version(skill.getVersion())
                 .source(skill.getSource())
+                // Registry 跨租户共享，描述符携带归属空间供 test/debug 做越权校验
+                .workspaceId(skill.getWorkspaceId())
                 .enabled("active".equals(skill.getStatus()))
                 .inputSchema(parseSchema(skill.getInputSchema()))
                 .outputSchema(parseSchema(skill.getOutputSchema()))

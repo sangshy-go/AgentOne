@@ -3,6 +3,7 @@ package com.agentone.skill.service.impl;
 import com.agentone.common.context.Context;
 import com.agentone.common.context.RuntimeContext;
 import com.agentone.common.exception.BusinessException;
+import com.agentone.skill.core.SkillDescriptor;
 import com.agentone.skill.core.SkillExecutor;
 import com.agentone.skill.core.SkillInvocation;
 import com.agentone.skill.core.SkillRegistry;
@@ -124,6 +125,13 @@ public class SkillServiceImpl implements SkillService {
                 throw new BusinessException(5006, "该 Skill 不支持直接测试");
             }
             executor = new ApiSkillExecutor(skill, webClient, objectMapper);
+        }
+
+        // S3: Registry 跨租户共享——描述符标注归属空间的 Skill 需校验越权
+        SkillDescriptor descriptor = executor.getDescriptor();
+        if (descriptor.getWorkspaceId() != null
+                && !descriptor.getWorkspaceId().equals(RuntimeContext.getWorkspaceId())) {
+            throw new BusinessException(5004, "无权测试其他工作空间的 Skill");
         }
 
         SkillInvocation invocation = SkillInvocation.builder()

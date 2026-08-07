@@ -4,11 +4,17 @@ import com.agentone.common.context.RuntimeContext;
 import com.agentone.common.result.Result;
 import com.agentone.skill.core.SkillResult;
 import com.agentone.skill.dto.BindSkillDTO;
+import com.agentone.skill.dto.DebugPreviewDTO;
+import com.agentone.skill.dto.DebugRunDTO;
 import com.agentone.skill.dto.SkillDTO;
 import com.agentone.skill.dto.SkillTestDTO;
 import com.agentone.skill.service.AgentSkillService;
+import com.agentone.skill.service.SkillDebugService;
 import com.agentone.skill.service.SkillService;
 import com.agentone.skill.vo.AgentSkillBindingVO;
+import com.agentone.skill.vo.DebugPreviewVO;
+import com.agentone.skill.vo.DebugRunVO;
+import com.agentone.skill.vo.DebugTargetVO;
 import com.agentone.skill.vo.SkillVO;
 import com.agentone.common.result.PageResult;
 import jakarta.validation.Valid;
@@ -27,6 +33,7 @@ public class SkillController {
 
     private final AgentSkillService agentSkillService;
     private final SkillService skillService;
+    private final SkillDebugService skillDebugService;
 
     /**
      * 创建 API 模式 Skill
@@ -59,6 +66,30 @@ public class SkillController {
     @PostMapping("/{skillId}/test")
     public Result<SkillResult> test(@PathVariable String skillId, @RequestBody SkillTestDTO dto) {
         return Result.ok(skillService.test(skillId, dto != null ? dto.getParams() : null));
+    }
+
+    /**
+     * 调试器第 1 步：列出当前工作空间可调试的 Skill（builtin/api/mcp）
+     */
+    @GetMapping("/debug/targets")
+    public Result<List<DebugTargetVO>> debugTargets() {
+        return Result.ok(skillDebugService.listTargets());
+    }
+
+    /**
+     * 调试器第 2 步：参数预检 + 执行计划预览（不发起真实调用）
+     */
+    @PostMapping("/debug/preview")
+    public Result<DebugPreviewVO> debugPreview(@Valid @RequestBody DebugPreviewDTO dto) {
+        return Result.ok(skillDebugService.preview(dto));
+    }
+
+    /**
+     * 调试器第 3 步：真实执行（上下文取当前登录态，写调试审计）
+     */
+    @PostMapping("/debug/run")
+    public Result<DebugRunVO> debugRun(@Valid @RequestBody DebugRunDTO dto) {
+        return Result.ok(skillDebugService.run(dto));
     }
 
     /**
