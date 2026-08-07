@@ -1,7 +1,7 @@
 # REST API 参考
 
 > Base URL：`http://localhost:8080`（Docker 部署见 `.env` 的 `API_PORT`）
-> 共 12 个 Controller、约 65 个端点。流式对话协议见 [sse-protocol.md](sse-protocol.md)。
+> 共 13 个 Controller、约 80 个端点。流式对话协议见 [sse-protocol.md](sse-protocol.md)。
 
 ## 通用约定
 
@@ -15,20 +15,20 @@
 
 ### 认证方式
 
-| 适用范围 | 方式 | 请求头 |
+| 适用范围 | 方式 | 凭证位置 |
 |----------|------|--------|
-| `/api/*`（控制台） | JWT（Sa-Token） | `Authorization: Bearer <token>` |
+| `/api/*`（控制台） | JWT（java-jwt） | HttpOnly Cookie `agentone_token`（浏览器 SPA）；亦接受 `Authorization: Bearer <token>`（API 客户端） |
 | `/v1/*`（开放接口） | API Key（SHA-256 哈希存储 + 每日限额） | `X-API-Key: <key>` |
 | `/v1/health` | 无需认证 | — |
 
-JWT 中携带 `userId` 与 `workspaceId`，切换工作空间后需使用新返回的 Token。所有业务数据按 `workspace_id` 隔离（MyBatis 租户拦截器自动注入）。
+JWT 中携带 `userId` 与 `workspaceId`，切换工作空间后 Cookie 重新签发。所有业务数据按 `workspace_id` 隔离（MyBatis 租户拦截器自动注入）。
 
 ### 认证 VO（AuthVO）
 
-注册 / 登录 / 切换工作空间均返回：
+注册 / 登录 / 切换工作空间成功后，服务端通过 `Set-Cookie` 下发 HttpOnly Cookie（`agentone_token` + refresh token）；**响应体不再携带 token**（`token` / `refreshToken` 字段为 null），仅返回用户与工作空间信息：
 
 ```json
-{ "token": "...", "userId": "...", "email": "...", "nickname": "...", "workspaceId": "...", "workspaceName": "..." }
+{ "token": null, "refreshToken": null, "userId": "...", "email": "...", "nickname": "...", "workspaceId": "...", "workspaceName": "..." }
 ```
 
 ---
@@ -152,17 +152,41 @@ JWT 中携带 `userId` 与 `workspaceId`，切换工作空间后需使用新返�
 
 支持文件类型：`.pdf` `.docx` `.doc` `.md` `.txt` `.csv` `.html`（后端白名单强校验）。
 
-## 9. Skill `/api/skills`（JWT）
+## 9. Skill `/api/skills`（Cookie）
+
+Skill 列表为**合并视图**：内置（builtin，虚拟挂载）+ API 模式（落 `skill` 表）+ MCP 工具（`mcp-{serverId}-{toolName}` 虚拟 ID，见 §10）。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/skills` | 内置 Skill 列表（知识库检索 / HTTP 请求 / 代码执行） |
+| GET | `/api/skills?page&size` | 工作空间 Skill 分页列表（builtin/api/mcp 合并，含 type/source） |
+| POST | `/api/skills` | 创建 API 模式 Skill（SkillDTO：`{name*, description?, inputSchema?, outputSchema?, config*, version?}`；config 为 JSON 字符串，须含 `url`，过 SSRF 校验） |
+| PUT | `/api/skills/{skillId}` | 更新 API 模式 Skill（内置不可改，5006） |
+| DELETE | `/api/skills/{skillId}` | 删除（仍被 Agent 绑定拒绝，5005） |
+| POST | `/api/skills/{skillId}/test` | 测试调用 `{params:{...}}` → 真实执行结果（builtin 不支持，5006） |
+| GET | `/api/skills/debug/targets` | 调试器第 1 步：可调试 Skill 列表（含 inputSchema） |
+| POST | `/api/skills/debug/preview` | 调试器第 2 步：参数预检 + 执行计划 `{skillId*, params}` → `{valid, errors, plan}`（不发起真实调用） |
+| POST | `/api/skills/debug/run` | 调试器第 3 步：真实执行 `{skillId*, params, sessionId?}` → `{success, data, errorMessage, durationMs, traceId, sessionId}`（写审计，agentId=debugger） |
 | GET | `/api/skills/bindings/{agentId}` | Agent 的 Skill 绑定 |
-| POST | `/api/skills/bind` | 绑定 `{agentId, skillId, config?}` |
+| POST | `/api/skills/bind` | 绑定 `{agentId, skillId, config?}`（skillId 可为 builtin/api/mcp 任意形态） |
 | DELETE | `/api/skills/bindings/{bindingId}` | 解绑 |
 | PUT | `/api/skills/bindings/{bindingId}/toggle?enabled=` | 启用/停用 |
 
-## 10. API Key `/api/api-keys`（JWT）
+## 10. MCP Server `/api/mcp-servers`（Cookie）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/mcp-servers` | 创建（McpServerDTO：`{name*, transport*(stdio/sse/streamable_http), url?, command?, args?[], headers?{}, timeoutMs?, status?}`；stdio 需 command，http 类需 url） |
+| PUT | `/api/mcp-servers/{id}` | 更新（transport/url/command 变化会关闭旧连接，需重新 connect） |
+| DELETE | `/api/mcp-servers/{id}` | 删除（工具仍被 Agent 绑定拒绝，5012） |
+| GET | `/api/mcp-servers?page&size` | 分页列表（含 `connected` / `toolCount`） |
+| GET | `/api/mcp-servers/{id}` | 详情 |
+| POST | `/api/mcp-servers/{id}/connect` | 连接并发现工具 → `List<McpToolVO>`（工具注册为虚拟 Skill） |
+| POST | `/api/mcp-servers/{id}/disconnect` | 断开（保留配置与 Server 行） |
+| GET | `/api/mcp-servers/{id}/tools` | 已发现的工具列表（skillId / toolName / description / inputSchema） |
+
+> MCP 的 url/command 不做 SSRF 拦截（stdio 即本地命令执行能力，管理员配置行为），信任边界与 API Skill 不同，详见 docs/technical/06-mcp-integration.md §6。
+
+## 11. API Key `/api/api-keys`（Cookie）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -170,7 +194,7 @@ JWT 中携带 `userId` 与 `workspaceId`，切换工作空间后需使用新返�
 | GET | `/api/api-keys` | 当前工作空间 Key 列表（脱敏） |
 | DELETE | `/api/api-keys/{id}` | 停用 |
 
-## 11. 开放接口 `/v1`（X-API-Key）
+## 12. 开放接口 `/v1`（X-API-Key）
 
 | 方法 | 路径 | 认证 | 说明 |
 |------|------|------|------|
@@ -203,7 +227,18 @@ JWT 中携带 `userId` 与 `workspaceId`，切换工作空间后需使用新返�
 | 3004 | 当前状态不允许该操作（状态机约束） |
 | 4002 | 会话不存在 |
 | 4003 | 无权访问该会话 |
-| 5000–5003 | Skill 绑定相关（序列化失败 / 重复绑定 / Skill 不存在 / 绑定记录不存在） |
+| 5001 | Agent 已绑定此 Skill |
+| 5002 | Skill 不存在（含不可调试） |
+| 5003 | Skill 绑定记录不存在 |
+| 5004 | 无权操作其他工作空间的 Skill（绑定 / 测试 / 调试） |
+| 5005 | 该 Skill 仍被 Agent 绑定，请先解除绑定（删除保护） |
+| 5006 | 该 Skill 不支持直接测试 / 内置 Skill 不可修改 |
+| 5007 | Skill 配置非法（不是合法 JSON / 缺少 url） |
+| 5008 | Skill 地址不安全（SSRF 拦截） |
+| 5009 | MCP Server 不存在（含跨空间访问） |
+| 5010 | MCP 配置非法（transport 枚举 / 缺 command / 缺 url） |
+| 5011 | MCP 连接失败 / 工具发现失败（携带根因消息） |
+| 5012 | MCP Server 的工具仍被 Agent 绑定，拒绝删除 |
 | 6001 | 知识库不存在 / 模型供应商不存在 |
 | 6002 | 模型不存在 / Chat 模型不存在 |
 | 6003 | 文档不存在 |
@@ -215,4 +250,5 @@ JWT 中携带 `userId` 与 `workspaceId`，切换工作空间后需使用新返�
 | 6009 | 不支持的文件类型 |
 | 6010 | 重复文档（同名同大小） |
 | 6011 | Chat 模型关联的服务商配置不存在 |
+| 6012 | 当前工作空间无权使用该模型供应商（跨租户模型保护） |
 | 7001–7005 | 模型供应商参数校验（不存在 / 名称 / 类型 / Key / URL 缺失） |

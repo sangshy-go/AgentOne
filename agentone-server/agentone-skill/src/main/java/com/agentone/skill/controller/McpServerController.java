@@ -40,7 +40,7 @@ public class McpServerController {
     }
 
     /**
-     * 删除 MCP Server（工具仍被 Agent 绑定时拒绝，6005）
+     * 删除 MCP Server（工具仍被 Agent 绑定时拒绝，5012）
      */
     @DeleteMapping("/{serverId}")
     public Result<Void> delete(@PathVariable String serverId) {

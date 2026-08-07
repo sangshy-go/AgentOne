@@ -124,42 +124,42 @@ class McpServerServiceImplTest {
     }
 
     @Test
-    void create_invalidTransport_throws6002() {
+    void create_invalidTransport_throws5010() {
         McpServerDTO dto = stdioDto();
         dto.setTransport("websocket");
         BusinessException e = assertThrows(BusinessException.class,
                 () -> mcpServerService.create(dto));
-        assertEquals(6002, e.getCode());
+        assertEquals(5010, e.getCode());
         verify(mcpServerMapper, never()).insert(any(McpServerDO.class));
     }
 
     @Test
-    void create_stdioWithoutCommand_throws6002() {
+    void create_stdioWithoutCommand_throws5010() {
         McpServerDTO dto = stdioDto();
         dto.setCommand("  ");
         BusinessException e = assertThrows(BusinessException.class,
                 () -> mcpServerService.create(dto));
-        assertEquals(6002, e.getCode());
+        assertEquals(5010, e.getCode());
     }
 
     @Test
-    void create_sseWithoutUrl_throws6002() {
+    void create_sseWithoutUrl_throws5010() {
         McpServerDTO dto = stdioDto();
         dto.setTransport("sse");
         dto.setCommand(null);
         BusinessException e = assertThrows(BusinessException.class,
                 () -> mcpServerService.create(dto));
-        assertEquals(6002, e.getCode());
+        assertEquals(5010, e.getCode());
     }
 
     // ---------- get / ownsServer ----------
 
     @Test
-    void get_notFound_throws6001() {
+    void get_notFound_throws5009() {
         when(mcpServerMapper.selectById("missing")).thenReturn(null);
         BusinessException e = assertThrows(BusinessException.class,
                 () -> mcpServerService.get("missing"));
-        assertEquals(6001, e.getCode());
+        assertEquals(5009, e.getCode());
     }
 
     @Test
@@ -208,13 +208,13 @@ class McpServerServiceImplTest {
     // ---------- delete ----------
 
     @Test
-    void delete_toolsStillBound_throws6005() {
+    void delete_toolsStillBound_throws5012() {
         when(mcpServerMapper.selectById("s1")).thenReturn(server("s1", "stdio"));
         when(bindingMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(2L);
 
         BusinessException e = assertThrows(BusinessException.class,
                 () -> mcpServerService.delete("s1"));
-        assertEquals(6005, e.getCode(), "工具仍被 Agent 绑定必须拒绝删除");
+        assertEquals(5012, e.getCode(), "工具仍被 Agent 绑定必须拒绝删除");
         verify(mcpServerMapper, never()).deleteById(anyString());
     }
 
@@ -291,20 +291,20 @@ class McpServerServiceImplTest {
     }
 
     @Test
-    void connect_openFails_throws6003() {
+    void connect_openFails_throws5011() {
         McpServerDO existing = server("s1", "stdio");
         when(mcpServerMapper.selectById("s1")).thenReturn(existing);
         when(connectionManager.open(existing)).thenThrow(new RuntimeException("connection refused"));
 
         BusinessException e = assertThrows(BusinessException.class,
                 () -> mcpServerService.connect("s1"));
-        assertEquals(6003, e.getCode());
+        assertEquals(5011, e.getCode());
         assertTrue(e.getMessage().contains("connection refused"));
         verify(skillRegistry, never()).register(any());
     }
 
     @Test
-    void connect_toolDiscoveryFails_closesConnectionAndThrows6003() {
+    void connect_toolDiscoveryFails_closesConnectionAndThrows5011() {
         McpServerDO existing = server("s1", "stdio");
         when(mcpServerMapper.selectById("s1")).thenReturn(existing);
         McpClientWrapper client = mock(McpClientWrapper.class);
@@ -313,7 +313,7 @@ class McpServerServiceImplTest {
 
         BusinessException e = assertThrows(BusinessException.class,
                 () -> mcpServerService.connect("s1"));
-        assertEquals(6003, e.getCode());
+        assertEquals(5011, e.getCode());
         verify(connectionManager).close("s1");
         verify(skillRegistry, never()).register(any());
     }

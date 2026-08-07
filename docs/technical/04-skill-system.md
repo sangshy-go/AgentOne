@@ -1,7 +1,8 @@
 # Skill 系统技术方案
 
-> Phase 2 · 课题①（Skill 工具化）+ 课题②（Skill 中心后端）
-> 状态：已交付（后端全链路 + 单元测试 + 运行时验证）；前端 Skill 中心页面与真实 LLM function calling 联调待后续。
+> Phase 2 · 课题①（Skill 工具化）+ 课题②（Skill 中心后端）+ 课题③（Skill 调试器）
+> 状态：已交付（后端全链路 + 单元测试 + 运行时验证 + 前端 Skill 中心页）；真实 LLM function calling 联调待 Key。
+> MCP 集成（课题④）以虚拟 Skill 接入本体系，详见 [06-mcp-integration.md](06-mcp-integration.md)。
 
 ## 1. 概述
 
@@ -15,7 +16,8 @@ Skill 系统负责 Agent 的"动手能力"：把知识库检索、HTTP 调用、
 | 工具化（Phase 2 核心改造） | Skill 注册为 AgentScope `Toolkit` 原生工具，**替换 MVP 的提示词注入**，LLM 以标准 function call 调用 |
 | 虚拟挂载 builtin | 内置 Skill 不落库，只存在于内存 `SkillRegistry`；列表/绑定时动态合并 |
 | Skill 中心（API 模式） | 用户通过 REST API 创建 HTTP 封装 Skill：CRUD + 测试调用 + 启动/运行时动态注册 |
-| 调用链审计 | 每次 Skill 执行写 `skill_call_log`（best-effort，不影响主对话链路） |
+| Skill 调试器（课题③） | 三步向导：列目标 → 参数预检（轻量 JSON Schema 校验 + 执行计划预览）→ 真实执行；上下文强制取登录态，调试写审计 |
+| 调用链审计 | 每次 Skill 执行写 `skill_call_log`（best-effort，不影响主对话链路）；调试执行以 `agent_id='debugger'` 标记来源 |
 | SSRF 防护 | 所有受用户/LLM 控制目标地址的出站请求统一过 `UrlSafetyUtil` |
 
 与其他模块的关系：
@@ -30,7 +32,8 @@ SkillAgentTool（agent 模块，AgentTool 适配器）
 SkillExecutor（skill 模块接口）
    ├─ builtin：HttpRequestSkill / CodeExecuteSkill（skill 模块）
    ├─ builtin：KnowledgeSearchSkill（agent 模块，依赖 KnowledgeService）
-   └─ api：ApiSkillExecutor（skill 模块，DB 配置驱动，每 Skill 一实例）
+   ├─ api：ApiSkillExecutor（skill 模块，DB 配置驱动，每 Skill 一实例）
+   └─ mcp：McpSkillExecutor（skill 模块，连接发现时每工具一实例，见 06-mcp-integration.md）
 ```
 
 ## 2. 架构设计
@@ -154,6 +157,22 @@ private Toolkit buildToolkit(String agentId, List<Map<String, Object>> toolCallS
 
 只放行 http/https；解析主机后拒绝环回 / 私网（site-local）/ 链路本地 / 通配地址——即拦截 `127.0.0.1`、`169.254.169.254`（云元数据）、`10.*` / `192.168.*` 等。`HttpRequestSkill` 与 `ApiSkillExecutor` 共用。已知局限：存在 DNS 重绑定理论风险（检查与连接两次解析可能不一致），生产建议对解析出的地址直连（列为后续增强，见 improvements.md）。
 
+### 3.7 Skill 调试器（SkillDebugServiceImpl，课题③）
+
+三步向导对应三个端点，全部走 Registry 统一入口：
+
+| 步骤 | 端点 | 行为 |
+|------|------|------|
+| 1 选目标 | `GET /api/skills/debug/targets` | Registry 描述符按 workspaceId 过滤（`null`=builtin 全局可见）+ 排序 |
+| 2 预检 | `POST /api/skills/debug/preview` | `JsonSchemaLiteValidator` 校验参数 + 生成执行计划文本（**不落真实请求**） |
+| 3 执行 | `POST /api/skills/debug/run` | 真实执行 + 写审计（`agent_id='debugger'`，traceId=`debug-{8位hex}`） |
+
+**安全边界**（关键设计）：执行上下文 userId/workspaceId **强制取当前登录态**——`DebugRunDTO` 只开放 skillId/params/sessionId 三个字段，接口形态上消除跨租户注入面；`requireExecutor` 另按描述符 workspaceId 拦截越权（5004）。真实执行复用 executor 原路径，api Skill 的执行期 SSRF 二次校验等安全机制天然生效。
+
+**执行计划预览**：api 类型读 DB config 还原 `HTTP {method} {url}（GET/DELETE 参数走 query，POST/PUT 参数走 JSON body）`；mcp/builtin 给结构化描述。坏 config 降级为提示文案，不阻断。
+
+**JsonSchemaLiteValidator**（`core/`）：只覆盖本系统 inputSchema 实际用到的子集——required（兼容 `List` 与 `Object[]` 两形态）+ 基本 type（string/number/integer/boolean/object/array）；null 值跳过类型检查、未知字段/未知类型放行（不误杀）。不引入完整 JSON Schema 校验库：本场景 schema 均为系统内简单 object schema，且校验库传递依赖在离线构建环境不确定。
+
 ## 4. 数据库设计
 
 ### 4.1 skill（仅存 api / market，V2 建表）
@@ -164,6 +183,7 @@ private Toolkit buildToolkit(String agentId, List<Map<String, Object>> toolCallS
 
 `id / agent_id / skill_id / skill_version / config_override(JSONB) / enabled / created_at`。
 **V15：移除 `skill_id → skill.id` 外键**（builtin 虚拟 ID 在 skill 表无对应行），`agent_id` 外键保留。
+**V17：`skill_id` 扩至 VARCHAR(200)**（MCP 虚拟 ID `mcp-{32hex}-{toolName}` 超原 UUID 长度，详见 06-mcp-integration.md）。
 
 ### 4.3 skill_call_log（V4 建表，课题①启用写入）
 
@@ -181,6 +201,9 @@ private Toolkit buildToolkit(String agentId, List<Map<String, Object>> toolCallS
 | PUT | `/api/skills/{id}` | 更新 API Skill |
 | DELETE | `/api/skills/{id}` | 删除 API Skill（有绑定拒绝 5005） |
 | POST | `/api/skills/{id}/test` | 测试调用（body: `{params}`，返回真实 SkillResult） |
+| GET | `/api/skills/debug/targets` | 调试第 1 步：当前空间可调试 Skill（builtin/api/mcp） |
+| POST | `/api/skills/debug/preview` | 调试第 2 步：参数预检 + 执行计划（body: `{skillId, params}`，不真实调用） |
+| POST | `/api/skills/debug/run` | 调试第 3 步：真实执行（body: `{skillId, params, sessionId?}`，写调试审计） |
 | GET | `/api/skills/bindings/{agentId}` | Agent 的绑定列表 |
 | POST | `/api/skills/bind` | 绑定（body: BindSkillDTO） |
 | DELETE | `/api/skills/bindings/{bindingId}` | 解绑 |
@@ -209,24 +232,31 @@ private Toolkit buildToolkit(String agentId, List<Map<String, Object>> toolCallS
 | D4 | builtin 绑定的外键冲突 | V15 删 `skill_id` 外键，完整性移交服务层 | 虚拟 ID 必然无对应行；bind/delete 已做显式校验 | 给 builtin 落全局行（否决：跨租户 + 白名单矛盾） |
 | D5 | 审计失败策略 | best-effort（Recorder 内部 try/catch） | 审计是旁路，不能拖垮主对话 | 强一致写入（否决） |
 | D6 | 工具线程上下文 | callAsync 内手动 set/restore ThreadLocal | Reactor 切线程后租户拦截器取不到 workspace_id | 全链路 Context 传参（改造面过大） |
+| D7 | 调试器执行上下文 | 强制取登录态，DTO 只开放 sessionId | 从接口形态上消除跨租户注入面；安全属性不依赖实现自觉 | 允许传 userId/workspaceId 做"模拟执行"（否决：权限提升面） |
+| D8 | 参数预检实现 | 自研轻量子集校验器（required + 基本 type） | schema 均为系统内简单 object schema；完整校验库传递依赖在离线构建不确定 | 引入完整 JSON Schema 校验库（否决：依赖面过大） |
 
 ## 7. 性能与扩展
 
 - **每次对话重建 Toolkit**：绑定数通常 < 10，装配开销可忽略；换取"绑定改动即时生效"。
 - **SkillRegistry** 为 `ConcurrentHashMap`，读写无锁竞争瓶颈。
-- **扩展点**：MCP Skill 只需实现 `SkillExecutor` 并在启动/发现时 `register`，复用全部工具化与审计链路；`configOverride`（Agent 级参数覆盖）已在 `SkillInvocation` 预留 TODO。
+- **扩展点（已兑现）**：课题④ MCP 工具即按此路径接入——`McpSkillExecutor implements SkillExecutor` + 连接发现时 `register`，零改动复用工具化/绑定/审计/调试全链路（见 06-mcp-integration.md）；`configOverride`（Agent 级参数覆盖）仍在 `SkillInvocation` 预留 TODO。
 - **审计查询**：`skill_call_log` 按 workspace_id 隔离，后续监控页按时间/技能聚合即可。
 
 ## 8. 测试要点
 
-单测（JUnit 5 + Mockito，`mvn test` 全绿，40 例）：
+单测（JUnit 5 + Mockito，`mvn test` 全绿）：
 
+课题①②（40 例）：
 - `UrlSafetyUtilTest`：环回/私网/链路本地/非法协议/缺失主机拦截，公网数字 IP 放行（全数字 IP，离线可跑）。
 - `ApiSkillExecutorTest`：Descriptor 构建、坏 Schema 降级、缺 url / SSRF / 坏 config 的失败路径（不发起真实 HTTP）。
 - `SkillServiceImplTest`：create 成功即注册、各类校验错误码、update 刷新 Registry、delete 绑定保护/注销、test 的 Registry 命中与 DB 兜底。
 - `SkillAgentToolTest`：工具名清洗规则。
 - 回归：修复 `ChunkServiceTest` 长期无法编译的问题（补 test 依赖 + 纠正与 `MIN_CHUNK_LENGTH_TO_EMBED=10` 设计冲突的断言）。
 
-运行时验证（真实 API + Cookie 认证，见 Day 15 日志）：列表虚拟挂载、跨租户隔离、创建/校验/SSRF 拦截、测试调用全链路、更新、绑定（builtin + api）、重复绑定保护、toggle、删除保护与解绑删除、启动期从 DB 恢复 api Skill（跨重启）。
+课题③（24 例）：
+- `JsonSchemaLiteValidatorTest`（13）：required 缺失/类型错/多错误汇总/null 跳过/未知字段放行/数组形态 required/未知类型不拦截。
+- `SkillDebugServiceImplTest`（11）：目标列表租户过滤、preview 校验分支、run 写审计与跨租户 5004。
+
+运行时验证（真实 API + Cookie 认证，见 Day 15 日志）：列表虚拟挂载、跨租户隔离、创建/校验/SSRF 拦截、测试调用全链路、更新、绑定（builtin + api + mcp）、重复绑定保护、toggle、删除保护与解绑删除、启动期从 DB 恢复 api Skill（跨重启）；课题③补充：builtin/api/mcp 三类调试执行落审计（agentId=debugger）、preview 缺必填拦截、跨空间调试 5004。
 
 **待验证（依赖真实 LLM Key）**：ReAct 循环中的 function calling 实调 + `skill_call_log` 落库。

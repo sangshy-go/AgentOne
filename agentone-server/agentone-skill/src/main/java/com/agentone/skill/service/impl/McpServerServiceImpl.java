@@ -111,7 +111,7 @@ public class McpServerServiceImpl implements McpServerService {
                 new LambdaQueryWrapper<AgentSkillBindingDO>()
                         .likeRight(AgentSkillBindingDO::getSkillId, McpSkillExecutor.SKILL_ID_PREFIX + serverId));
         if (bindingCount > 0) {
-            throw new BusinessException(6005, "该 MCP Server 的工具仍被 Agent 绑定，请先解除绑定");
+            throw new BusinessException(5012, "该 MCP Server 的工具仍被 Agent 绑定，请先解除绑定");
         }
 
         unregisterServerTools(serverId);
@@ -144,7 +144,7 @@ public class McpServerServiceImpl implements McpServerService {
             client = connectionManager.open(server);
         } catch (Exception e) {
             log.warn("MCP Server 连接失败: id={}, name={}, error={}", serverId, server.getName(), e.getMessage());
-            throw new BusinessException(6003, "MCP Server 连接失败: " + rootMessage(e));
+            throw new BusinessException(5011, "MCP Server 连接失败: " + rootMessage(e));
         }
 
         try {
@@ -170,7 +170,7 @@ public class McpServerServiceImpl implements McpServerService {
         } catch (Exception e) {
             connectionManager.close(serverId);
             log.warn("MCP Server 工具发现失败: id={}, error={}", serverId, e.getMessage());
-            throw new BusinessException(6003, "MCP 工具发现失败: " + rootMessage(e));
+            throw new BusinessException(5011, "MCP 工具发现失败: " + rootMessage(e));
         }
     }
 
@@ -217,22 +217,22 @@ public class McpServerServiceImpl implements McpServerService {
     private McpServerDO requireServer(String serverId) {
         McpServerDO server = mcpServerMapper.selectById(serverId);
         if (server == null) {
-            throw new BusinessException(6001, "MCP Server 不存在");
+            throw new BusinessException(5009, "MCP Server 不存在");
         }
         return server;
     }
 
     private void validate(McpServerDTO dto) {
         if (!TRANSPORTS.contains(dto.getTransport())) {
-            throw new BusinessException(6002, "transport 必须是 stdio / sse / streamable_http");
+            throw new BusinessException(5010, "transport 必须是 stdio / sse / streamable_http");
         }
         if ("stdio".equals(dto.getTransport())
                 && (dto.getCommand() == null || dto.getCommand().isBlank())) {
-            throw new BusinessException(6002, "stdio 传输必须提供 command");
+            throw new BusinessException(5010, "stdio 传输必须提供 command");
         }
         if (("sse".equals(dto.getTransport()) || "streamable_http".equals(dto.getTransport()))
                 && (dto.getUrl() == null || dto.getUrl().isBlank())) {
-            throw new BusinessException(6002, dto.getTransport() + " 传输必须提供 url");
+            throw new BusinessException(5010, dto.getTransport() + " 传输必须提供 url");
         }
     }
 
