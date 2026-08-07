@@ -27,6 +27,8 @@ import com.agentone.knowledge.mapper.ModelProviderMapper;
 import com.agentone.knowledge.service.KnowledgeService;
 import com.agentone.knowledge.vo.AgentKnowledgeBindingVO;
 import com.agentone.knowledge.vo.SearchResultVO;
+import com.agentone.agent.tool.SkillAgentTool;
+import com.agentone.skill.core.SkillCallLogRecorder;
 import com.agentone.skill.core.SkillRegistry;
 import com.agentone.skill.service.AgentSkillService;
 import com.agentone.skill.vo.AgentSkillBindingVO;
@@ -42,6 +44,7 @@ import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.model.Model;
+import io.agentscope.core.tool.Toolkit;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -51,6 +54,7 @@ import reactor.core.publisher.Flux;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -78,6 +82,7 @@ public class ChatServiceImpl implements ChatService {
     private final MemoryService memoryService;
     private final AgentSkillService agentSkillService;
     private final SkillRegistry skillRegistry;
+    private final SkillCallLogRecorder skillCallLogRecorder;
     private final KnowledgeService knowledgeService;
     private final ModelMapper modelMapper;
     private final ModelProviderMapper modelProviderMapper;
@@ -108,8 +113,9 @@ public class ChatServiceImpl implements ChatService {
         // 4. 构建系统提示词（AGENTS.md + 变量注入 + RAG + 历史上下文）
         String systemPrompt = buildSystemPrompt(agentDO, session.getId());
 
-        // 5. 创建 ReActAgent（每请求一个实例）
-        ReActAgent agent = buildReActAgent(agentDO, systemPrompt, session.getId());
+        // 5. 创建 ReActAgent（每请求一个实例；sink 收集本轮 Skill 调用）
+        List<Map<String, Object>> toolCalls = new java.util.concurrent.CopyOnWriteArrayList<>();
+        ReActAgent agent = buildReActAgent(agentDO, systemPrompt, session.getId(), toolCalls);
 
         // 6. 构建 AgentScope RuntimeContext
         io.agentscope.core.agent.RuntimeContext agentCtx = io.agentscope.core.agent.RuntimeContext.builder()
@@ -129,8 +135,8 @@ public class ChatServiceImpl implements ChatService {
         Msg response = agent.call(List.of(userMsg), agentCtx).block();
         String reply = response != null ? response.getTextContent() : "";
 
-        // 8. 保存助手回复
-        saveMessage(session.getId(), "assistant", reply);
+        // 8. 保存助手回复（含本轮 Skill 调用快照）
+        saveMessage(session.getId(), "assistant", reply, serializeToolCalls(toolCalls));
 
         int totalTokens = estimateTokens(dto.getMessage() + reply);
 
@@ -169,12 +175,14 @@ public class ChatServiceImpl implements ChatService {
 
         // 4. 构建上下文（AGENTS.md + RAG + 历史）
         String systemPrompt = buildSystemPrompt(agentDO, session.getId());
-        ReActAgent agent = buildReActAgent(agentDO, systemPrompt, session.getId());
+        List<Map<String, Object>> toolCalls = new java.util.concurrent.CopyOnWriteArrayList<>();
+        ReActAgent agent = buildReActAgent(agentDO, systemPrompt, session.getId(), toolCalls);
 
         io.agentscope.core.agent.RuntimeContext agentCtx = io.agentscope.core.agent.RuntimeContext.builder()
                 .sessionId(session.getId())
                 .userId(capturedUserId)
                 .put("workspace_id", capturedWorkspaceId)
+                .put("agent_id", agentDO.getId())
                 .build();
 
         // 5. 构建用户消息
@@ -224,7 +232,8 @@ public class ChatServiceImpl implements ChatService {
                                 com.agentone.common.context.Context.of(capturedUserId, capturedWorkspaceId);
                         RuntimeContext.set(ctx);
 
-                        saveMessage(session.getId(), "assistant", fullReply.toString());
+                        saveMessage(session.getId(), "assistant", fullReply.toString(),
+                                serializeToolCalls(toolCalls));
                         // 原子自增 message_count（并发安全，避免丢更新）
                         com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<ChatSessionDO> statUpd =
                                 new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<>();
@@ -353,7 +362,8 @@ public class ChatServiceImpl implements ChatService {
     /**
      * 构建 ReActAgent（每请求一个实例，非线程安全）
      */
-    private ReActAgent buildReActAgent(AgentDO agentDO, String systemPrompt, String sessionId) {
+    private ReActAgent buildReActAgent(AgentDO agentDO, String systemPrompt, String sessionId,
+                                       List<Map<String, Object>> toolCallSink) {
         ModelConfig modelConfig = parseModelConfig(agentDO.getModelConfig());
 
         // 解析模型连接参数：优先 chatModelId（model 表 → provider 表），否则用 modelConfig 里的直填值，
@@ -401,6 +411,9 @@ public class ChatServiceImpl implements ChatService {
 
         GenerateOptions generateOptions = optionsBuilder.build();
 
+        // Phase 2：Skill 注册为 AgentScope 原生工具（替换 MVP 的提示词注入）
+        Toolkit toolkit = buildToolkit(agentDO.getId(), toolCallSink);
+
         return ReActAgent.builder()
                 .name(agentDO.getName())
                 .sysPrompt(systemPrompt)
@@ -408,7 +421,47 @@ public class ChatServiceImpl implements ChatService {
                 .generateOptions(generateOptions)
                 .maxIters(maxIters)
                 .defaultSessionId(sessionId)
+                .toolkit(toolkit)
                 .build();
+    }
+
+    /**
+     * 构建 Toolkit：把 Agent 已启用的 Skill 绑定注册为 AgentScope 工具，
+     * LLM 通过 function calling 真实调用；chunk callback 收集本轮调用记录，
+     * 最终写入 chat_message.skill_calls。
+     */
+    private Toolkit buildToolkit(String agentId, List<Map<String, Object>> toolCallSink) {
+        Toolkit toolkit = new Toolkit();
+        try {
+            List<AgentSkillBindingVO> bindings = agentSkillService.listBindings(agentId);
+            for (AgentSkillBindingVO binding : bindings) {
+                if (!Boolean.TRUE.equals(binding.getEnabled())) {
+                    continue;
+                }
+                skillRegistry.getExecutor(binding.getSkillId()).ifPresent(executor ->
+                        toolkit.registerAgentTool(new SkillAgentTool(executor, skillCallLogRecorder)));
+            }
+        } catch (Exception e) {
+            log.warn("加载 Agent Skill 列表失败: agentId={}, error={}", agentId, e.getMessage());
+        }
+        toolkit.setChunkCallback((use, result) -> {
+            Map<String, Object> entry = new java.util.HashMap<>();
+            entry.put("name", use.getName());
+            entry.put("input", use.getInput());
+            toolCallSink.add(entry);
+        });
+        return toolkit;
+    }
+
+    private String serializeToolCalls(List<Map<String, Object>> toolCalls) {
+        if (toolCalls == null || toolCalls.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(toolCalls);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private AgentDO loadAgent(String agentId) {
@@ -460,13 +513,7 @@ public class ChatServiceImpl implements ChatService {
             sb.append("You are a helpful assistant.");
         }
 
-        // 2. 加载 Agent 绑定的 Skill 列表
-        String skillPrompt = buildSkillPrompt(agent.getId());
-        if (!skillPrompt.isEmpty()) {
-            sb.append("\n\n").append(skillPrompt);
-        }
-
-        // 3. 加载知识库 RAG 上下文
+        // 2. 加载知识库 RAG 上下文（Skill 已改为 Toolkit 原生工具注册，不再注入提示词）
         String ragPrompt = buildRagContext(agent.getId(), sessionId);
         if (!ragPrompt.isEmpty()) {
             sb.append("\n\n").append(ragPrompt);
@@ -580,52 +627,17 @@ public class ChatServiceImpl implements ChatService {
         return messages.isEmpty() ? null : messages.get(0).getContent();
     }
 
-    /**
-     * 构建 Skill 提示词
-     * 将 Agent 绑定的 Skill 描述注入到系统提示词中，让 LLM 知道有哪些工具可用
-     */
-    private String buildSkillPrompt(String agentId) {
-        try {
-            List<AgentSkillBindingVO> bindings = agentSkillService.listBindings(agentId);
-            if (bindings.isEmpty()) {
-                return "";
-            }
-
-            StringBuilder sb = new StringBuilder();
-            sb.append("## 可用工具（Skill）\n\n");
-            sb.append("你可以调用以下工具来完成任务：\n\n");
-
-            for (AgentSkillBindingVO binding : bindings) {
-                if (!Boolean.TRUE.equals(binding.getEnabled())) {
-                    continue;
-                }
-                sb.append("- **").append(binding.getSkillName()).append("**（ID: ")
-                  .append(binding.getSkillId()).append("）: ");
-
-                // 从 Registry 获取描述
-                skillRegistry.getExecutor(binding.getSkillId()).ifPresent(executor -> {
-                    // 这里只是为了确认存在，描述在下一行输出
-                });
-
-                // 直接输出类型信息
-                sb.append("类型: ").append(binding.getSkillType() != null ? binding.getSkillType() : "unknown");
-                sb.append("\n");
-            }
-
-            sb.append("\n当需要使用某个工具时，请在回复中说明调用意图。");
-            return sb.toString();
-        } catch (Exception e) {
-            log.warn("加载 Agent Skill 列表失败: agentId={}, error={}", agentId, e.getMessage());
-            return "";
-        }
+    private void saveMessage(String sessionId, String role, String content) {
+        saveMessage(sessionId, role, content, null);
     }
 
-    private void saveMessage(String sessionId, String role, String content) {
+    private void saveMessage(String sessionId, String role, String content, String skillCallsJson) {
         ChatMessageDO msg = new ChatMessageDO();
         msg.setSessionId(sessionId);
         msg.setRole(role);
         msg.setContent(content);
         msg.setTokenCount(estimateTokens(content));
+        msg.setSkillCalls(skillCallsJson);
         msg.setCreatedAt(LocalDateTime.now());
         messageMapper.insert(msg);
     }

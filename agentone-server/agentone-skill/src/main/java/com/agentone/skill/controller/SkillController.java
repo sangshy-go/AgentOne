@@ -2,8 +2,12 @@ package com.agentone.skill.controller;
 
 import com.agentone.common.context.RuntimeContext;
 import com.agentone.common.result.Result;
+import com.agentone.skill.core.SkillResult;
 import com.agentone.skill.dto.BindSkillDTO;
+import com.agentone.skill.dto.SkillDTO;
+import com.agentone.skill.dto.SkillTestDTO;
 import com.agentone.skill.service.AgentSkillService;
+import com.agentone.skill.service.SkillService;
 import com.agentone.skill.vo.AgentSkillBindingVO;
 import com.agentone.skill.vo.SkillVO;
 import com.agentone.common.result.PageResult;
@@ -22,6 +26,40 @@ import java.util.List;
 public class SkillController {
 
     private final AgentSkillService agentSkillService;
+    private final SkillService skillService;
+
+    /**
+     * 创建 API 模式 Skill
+     */
+    @PostMapping
+    public Result<SkillVO> create(@Valid @RequestBody SkillDTO dto) {
+        return Result.ok(skillService.create(dto));
+    }
+
+    /**
+     * 更新 API 模式 Skill
+     */
+    @PutMapping("/{skillId}")
+    public Result<SkillVO> update(@PathVariable String skillId, @Valid @RequestBody SkillDTO dto) {
+        return Result.ok(skillService.update(skillId, dto));
+    }
+
+    /**
+     * 删除 API 模式 Skill（存在 Agent 绑定时拒绝）
+     */
+    @DeleteMapping("/{skillId}")
+    public Result<Void> delete(@PathVariable String skillId) {
+        skillService.delete(skillId);
+        return Result.ok();
+    }
+
+    /**
+     * 测试调用 Skill（Skill 中心调试用，返回真实执行结果）
+     */
+    @PostMapping("/{skillId}/test")
+    public Result<SkillResult> test(@PathVariable String skillId, @RequestBody SkillTestDTO dto) {
+        return Result.ok(skillService.test(skillId, dto != null ? dto.getParams() : null));
+    }
 
     /**
      * 获取工作空间的所有 Skill

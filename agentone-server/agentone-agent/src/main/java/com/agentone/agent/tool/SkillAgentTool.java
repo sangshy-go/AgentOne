@@ -1,6 +1,8 @@
 package com.agentone.agent.tool;
 
 import com.agentone.common.context.Context;
+import com.agentone.common.context.RuntimeContext;
+import com.agentone.skill.core.SkillCallLogRecorder;
 import com.agentone.skill.core.SkillDescriptor;
 import com.agentone.skill.core.SkillExecutor;
 import com.agentone.skill.core.SkillInvocation;
@@ -22,6 +24,11 @@ import java.util.UUID;
  * ReActAgent 通过 Toolkit 调用此工具，LLM 发起 function call 后，
  * callAsync() 被触发，进而调用底层 SkillExecutor.execute()。
  *
+ * 职责（Phase 2 工具化）：
+ * 1. 在执行线程恢复业务 RuntimeContext（租户拦截器依赖 ThreadLocal，
+ *    Reactor 线程默认无上下文，不恢复则 Skill 内的 DB 查询直接抛异常）
+ * 2. 执行 Skill 并将调用链写入 skill_call_log（审计）
+ *
  * 工具名规则：skill ID 中的非字母数字字符替换为下划线，
  * 例如 "builtin-http-request" → "builtin_http_request"。
  */
@@ -32,10 +39,12 @@ public class SkillAgentTool implements AgentTool {
 
     private final SkillExecutor executor;
     private final SkillDescriptor descriptor;
+    private final SkillCallLogRecorder recorder;
     private final String toolName;
 
-    public SkillAgentTool(SkillExecutor executor) {
+    public SkillAgentTool(SkillExecutor executor, SkillCallLogRecorder recorder) {
         this.executor = executor;
+        this.recorder = recorder;
         this.descriptor = executor.getDescriptor();
         this.toolName = sanitizeToolName(descriptor.getId());
     }
@@ -65,15 +74,6 @@ public class SkillAgentTool implements AgentTool {
         return false;
     }
 
-    /**
-     * 执行 Skill。
-     *
-     * 流程：
-     * 1. 从 ToolCallParam.getInput() 取 LLM 传入的参数 Map
-     * 2. 从 ToolCallParam.getRuntimeContext() 还原用户/工作空间上下文
-     * 3. 调用 SkillExecutor.execute()（同步，在 boundedElastic 线程上运行避免阻塞 Reactor 事件循环）
-     * 4. 将 SkillResult 转换为 ToolResultBlock
-     */
     @Override
     public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
         return Mono.fromCallable(() -> {
@@ -87,17 +87,31 @@ public class SkillAgentTool implements AgentTool {
                     .traceId(UUID.randomUUID().toString().substring(0, 8))
                     .build();
 
-            // 从 AgentScope RuntimeContext 还原业务上下文
+            // 从 AgentScope RuntimeContext 还原业务上下文（含 agentId）
             Context context = buildContext(param);
 
             log.info("执行 Skill: name={}, toolName={}, traceId={}",
                     descriptor.getName(), toolName, invocation.getTraceId());
 
-            SkillResult result = executor.execute(invocation, context);
+            // 恢复 ThreadLocal 上下文：Skill 内部的租户表查询 / 审计落库都依赖它
+            Context prev = RuntimeContext.get();
+            SkillResult result;
+            try {
+                RuntimeContext.set(context);
+                result = executor.execute(invocation, context);
+            } finally {
+                if (prev != null) {
+                    RuntimeContext.set(prev);
+                } else {
+                    RuntimeContext.clear();
+                }
+            }
 
             long duration = System.currentTimeMillis() - start;
             log.info("Skill 执行完成: name={}, success={}, durationMs={}",
                     descriptor.getName(), result.isSuccess(), duration);
+
+            recordCallLog(param, context, invocation, input, result, duration);
 
             if (result.isSuccess()) {
                 return ToolResultBlock.text(formatData(result.getData()));
@@ -108,19 +122,45 @@ public class SkillAgentTool implements AgentTool {
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
+    /** 调用链审计：落库 skill_call_log，失败只告警（Recorder 内部兜底） */
+    private void recordCallLog(ToolCallParam param, Context context, SkillInvocation invocation,
+                               Map<String, Object> input, SkillResult result, long duration) {
+        if (recorder == null) {
+            return;
+        }
+        String sessionId = null;
+        if (param.getRuntimeContext() != null) {
+            sessionId = param.getRuntimeContext().getSessionId();
+        }
+        recorder.record(
+                context.getWorkspaceId(),
+                context.getAgentId(),
+                sessionId,
+                descriptor.getId(),
+                invocation.getTraceId(),
+                toJson(input),
+                result.isSuccess() ? formatData(result.getData()) : "{}",
+                duration,
+                result.isSuccess(),
+                result.isSuccess() ? null : result.getErrorMessage());
+    }
+
     /**
-     * 从 AgentScope RuntimeContext 中提取 userId / workspaceId，
+     * 从 AgentScope RuntimeContext 中提取 userId / workspaceId / agentId，
      * 构建业务侧 Context 供 SkillExecutor 使用。
      */
     private Context buildContext(ToolCallParam param) {
         String userId = null;
         String workspaceId = null;
+        String agentId = null;
         if (param.getRuntimeContext() != null) {
             userId = param.getRuntimeContext().getUserId();
             Object ws = param.getRuntimeContext().get("workspace_id");
             workspaceId = ws != null ? ws.toString() : null;
+            Object agent = param.getRuntimeContext().get("agent_id");
+            agentId = agent != null ? agent.toString() : null;
         }
-        return Context.of(userId, workspaceId);
+        return Context.of(userId, workspaceId, agentId);
     }
 
     /** 将 SkillResult.data Map 序列化为 JSON 字符串，作为工具输出返回给 LLM。 */
@@ -128,10 +168,14 @@ public class SkillAgentTool implements AgentTool {
         if (data == null || data.isEmpty()) {
             return "执行成功";
         }
+        return toJson(data);
+    }
+
+    private String toJson(Object value) {
         try {
-            return MAPPER.writeValueAsString(data);
+            return MAPPER.writeValueAsString(value);
         } catch (Exception e) {
-            return String.valueOf(data);
+            return String.valueOf(value);
         }
     }
 
