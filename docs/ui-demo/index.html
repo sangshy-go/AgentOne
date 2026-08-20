@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Skill 中心 · AgentOne 灵一</title>
+<style>
+/* ============================================================
+   AgentOne Design Tokens（与真机 global.css 对齐）
+   ============================================================ */
+:root{
+  --primary:#6366F1; --primary-hover:#4F46E5;
+  --primary-light:#EEF2FF; --primary-bg:#F5F3FF;
+  --primary-border:#C7D2FE;
+  --grad-primary:linear-gradient(135deg,#6366F1 0%,#8B5CF6 50%,#06B6D4 100%);
+  --grad-primary-2:linear-gradient(135deg,#6366F1 0%,#8B5CF6 100%);
+  --grad-text:linear-gradient(135deg,#6366F1 0%,#8B5CF6 50%,#06B6D4 100%);
+  --surface:#FFFFFF; --surface-alt:#F8FAFF; --bg:#EEF2FF;
+  --border:#E2E8F0; --border-light:#EEF2FF; --border-strong:#CBD5E1;
+  --text:#0F172A; --text-secondary:#475569; --text-muted:#64748B; --text-placeholder:#94A3B8;
+  --shadow-sm:0 1px 2px rgba(15,23,42,.04);
+  --shadow:0 2px 8px rgba(15,23,42,.06);
+  --shadow-md:0 8px 24px rgba(15,23,42,.08);
+  --shadow-lg:0 16px 40px rgba(15,23,42,.10);
+  --glow-primary:0 0 24px rgba(99,102,241,.25);
+  --glow-primary-md:0 8px 32px rgba(99,102,241,.30);
+  --green:#10B981; --green-bg:#ECFDF5; --green-border:#A7F3D0;
+  --orange:#F59E0B; --orange-bg:#FFFBEB; --orange-border:#FDE68A;
+  --red:#EF4444; --red-bg:#FEF2F2; --red-border:#FECACA;
+  --purple:#8B5CF6; --purple-bg:#F5F3FF; --purple-border:#DDD6FE;
+  --indigo:#6366F1; --indigo-bg:#EEF2FF; --indigo-border:#C7D2FE;
+  --blue:#3B82F6; --blue-bg:#EFF6FF; --blue-border:#BFDBFE;
+  --cyan:#06B6D4; --cyan-bg:#ECFEFF; --cyan-border:#A5F3FC;
+  --radius-xs:6px; --radius-sm:8px; --radius:12px; --radius-lg:16px; --radius-xl:20px;
+  --sidebar-w:260px; --header-h:64px;
+  --transition:.25s cubic-bezier(.4,0,.2,1);
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+html{-webkit-font-smoothing:antialiased;}
+body{
+  font-family:'Inter',system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,"PingFang SC","Microsoft YaHei",sans-serif;
+  color:var(--text);background:#F0F2F8;font-size:14px;line-height:1.6;
+}
+button{font-family:inherit;cursor:pointer;}
+::selection{background:var(--primary);color:#fff;}
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-thumb{background:var(--primary-border);border-radius:3px;}
+::-webkit-scrollbar-thumb:hover{background:var(--primary);}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px;}
+
+/* ============================================================
+   App Shell：侧边栏 + 顶栏
+   ============================================================ */
+.sidebar{
+  position:fixed;top:0;left:0;bottom:0;width:var(--sidebar-w);
+  background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;z-index:50;
+}
+.sidebar-header{display:flex;align-items:center;gap:10px;padding:18px 20px;border-bottom:1px solid var(--border-light);}
+.icon-box{
+  width:38px;height:38px;border-radius:10px;flex-shrink:0;
+  background:var(--grad-primary);color:#fff;font-weight:800;font-size:15px;
+  display:flex;align-items:center;justify-content:center;box-shadow:var(--glow-primary);
+}
+.brand-name{font-weight:800;font-size:16px;letter-spacing:-.3px;}
+.brand-sub{font-size:11px;color:var(--text-muted);font-weight:500;}
+.sidebar-nav{flex:1;overflow-y:auto;padding:14px 12px;}
+.nav-section-label{
+  font-size:11px;font-weight:700;color:var(--text-placeholder);
+  letter-spacing:.5px;padding:14px 10px 6px;
+}
+.nav-item{
+  display:flex;align-items:center;gap:10px;width:100%;
+  padding:9px 10px;border-radius:var(--radius-sm);border:none;background:transparent;
+  color:var(--text-secondary);font-size:13.5px;font-weight:600;text-align:left;
+  transition:var(--transition);margin-bottom:2px;
+}
+.nav-item:hover{background:var(--surface-alt);color:var(--text);}
+.nav-item.active{
+  background:var(--grad-primary-2);color:#fff;box-shadow:var(--glow-primary);
+}
+.nav-icon{width:18px;height:18px;flex-shrink:0;display:inline-flex;}
+.nav-icon svg{width:100%;height:100%;}
+.sidebar-footer{padding:14px 16px;border-top:1px solid var(--border-light);display:flex;align-items:center;gap:10px;}
+.user-avatar{
+  width:34px;height:34px;border-radius:50%;background:var(--grad-primary);
+  color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:13px;
+}
+.user-meta{flex:1;min-width:0;}
+.user-name{font-size:13px;font-weight:700;line-height:1.3;}
+.user-ws{font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+.main{margin-left:var(--sidebar-w);min-height:100vh;display:flex;flex-direction:column;}
+.header{
+  height:var(--header-h);background:rgba(255,255,255,.7);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border-light);display:flex;align-items:center;
+  justify-content:space-between;padding:0 28px;position:sticky;top:0;z-index:40;
+}
+.header-breadcrumb{font-weight:700;font-size:14px;color:var(--text-secondary);}
+.header-right{display:flex;align-items:center;gap:10px;}
+.header-btn{
+  width:34px;height:34px;border-radius:var(--radius-sm);border:1px solid var(--border);
+  background:var(--surface);color:var(--text-secondary);font-size:14px;transition:var(--transition);
+}
+.header-btn:hover{border-color:var(--primary-border);color:var(--primary);}
+.content{flex:1;padding:28px;max-width:1440px;width:100%;margin:0 auto;}
+
+/* ============================================================
+   页头
+   ============================================================ */
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:22px;flex-wrap:wrap;}
+.page-title{
+  font-size:28px;font-weight:800;letter-spacing:-.8px;line-height:1.2;
+  background:var(--grad-text);-webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;
+}
+.page-desc{font-size:13.5px;color:var(--text-muted);font-weight:500;margin-top:4px;}
+.btn{
+  display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:var(--radius);
+  font-size:13px;font-weight:700;border:1px solid transparent;transition:var(--transition);white-space:nowrap;
+}
+.btn-gradient{background:var(--grad-primary-2);color:#fff;box-shadow:var(--glow-primary);}
+.btn-gradient:hover{box-shadow:var(--glow-primary-md);transform:translateY(-1px);}
+.btn-ghost{background:var(--surface);border-color:var(--border);color:var(--text-secondary);}
+.btn-ghost:hover{border-color:var(--primary-border);color:var(--primary);}
+.btn-sm{padding:6px 12px;font-size:12px;border-radius:var(--radius-sm);}
+
+/* ============================================================
+   Tabs（广场 / 我的技能）
+   ============================================================ */
+.tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:4px;width:fit-content;margin-bottom:20px;}
+.tab{
+  padding:8px 20px;border-radius:var(--radius-sm);border:none;background:transparent;
+  font-size:13.5px;font-weight:700;color:var(--text-muted);transition:var(--transition);
+  display:flex;align-items:center;gap:8px;
+}
+.tab:hover{color:var(--text);}
+.tab.active{background:var(--grad-primary-2);color:#fff;box-shadow:var(--glow-primary);}
+.tab .count{font-size:11px;padding:1px 7px;border-radius:var(--radius-full,#999);background:rgba(255,255,255,.25);}
+.tab:not(.active) .count{background:var(--surface-alt);color:var(--text-muted);}
+
+/* ============================================================
+   广场：搜索 + 工种导航
+   ============================================================ */
+.toolbar{display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap;}
+.search-box{
+  flex:1;min-width:240px;max-width:480px;position:relative;display:flex;align-items:center;
+}
+.search-box svg{position:absolute;left:14px;width:16px;height:16px;color:var(--text-placeholder);pointer-events:none;}
+.search-input{
+  width:100%;padding:11px 14px 11px 40px;border-radius:var(--radius);border:1.5px solid var(--border);
+  font-size:13.5px;background:var(--surface);transition:var(--transition);outline:none;font-family:inherit;
+}
+.search-input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(99,102,241,.15);}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:20px;}
+.chips::-webkit-scrollbar{height:0;}
+.chip{
+  display:inline-flex;align-items:center;gap:7px;padding:8px 15px;border-radius:var(--radius-full,#999);
+  border:1.5px solid var(--border);background:var(--surface);font-size:12.5px;font-weight:700;
+  color:var(--text-secondary);transition:var(--transition);white-space:nowrap;
+  border-radius:9999px;
+}
+.chip svg{width:15px;height:15px;}
+.chip:hover{border-color:var(--primary-border);color:var(--primary);}
+.chip.active{background:var(--grad-primary-2);color:#fff;border-color:transparent;box-shadow:var(--glow-primary);}
+
+/* ============================================================
+   精选区
+   ============================================================ */
+.section-title{
+  font-size:16px;font-weight:700;margin:8px 0 14px;display:flex;align-items:center;gap:10px;letter-spacing:-.2px;
+}
+.section-title::before{content:'';width:4px;height:18px;border-radius:2px;background:var(--grad-primary);}
+.section-title .hint{font-size:12px;color:var(--text-muted);font-weight:500;margin-left:auto;}
+
+/* ============================================================
+   技能卡片
+   ============================================================ */
+.skill-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:30px;}
+.skill-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:18px;cursor:pointer;transition:var(--transition);position:relative;overflow:hidden;
+  display:flex;flex-direction:column;gap:12px;
+}
+.skill-card::after{
+  content:'';position:absolute;top:-40%;right:-30%;width:180px;height:180px;border-radius:50%;
+  background:var(--grad-primary);opacity:.05;filter:blur(36px);transition:var(--transition);pointer-events:none;
+}
+.skill-card:hover{box-shadow:var(--shadow-lg),var(--glow-primary);transform:translateY(-3px);border-color:var(--primary-border);}
+.skill-card:hover::after{opacity:.12;}
+.skill-card-top{display:flex;align-items:flex-start;gap:12px;}
+.skill-icon{
+  width:46px;height:46px;border-radius:var(--radius);flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+}
+.skill-icon svg{width:22px;height:22px;}
+.skill-card-title{flex:1;min-width:0;}
+.skill-name{font-size:15px;font-weight:800;letter-spacing:-.2px;line-height:1.3;}
+.skill-author{font-size:11.5px;color:var(--text-muted);margin-top:2px;font-weight:500;}
+.badge{
+  display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:20px;
+  font-size:10.5px;font-weight:700;border:1px solid transparent;white-space:nowrap;
+}
+.badge-official{background:var(--indigo-bg);color:var(--indigo);border-color:var(--indigo-border);}
+.badge-custom{background:var(--surface-alt);color:var(--text-secondary);border-color:var(--border);}
+.badge-imported{background:var(--cyan-bg);color:var(--cyan);border-color:var(--cyan-border);}
+.badge-builtin{background:var(--purple-bg);color:var(--purple);border-color:var(--purple-border);}
+.badge-mcp{background:var(--blue-bg);color:var(--blue);border-color:var(--blue-border);}
+.badge-cat{background:var(--surface-alt);color:var(--text-muted);border-color:var(--border);}
+.badge-script{background:var(--orange-bg);color:var(--orange);border-color:var(--orange-border);}
+.skill-tagline{
+  font-size:12.5px;color:var(--text-secondary);line-height:1.55;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:38px;
+}
+.skill-card-foot{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.spacer{flex:1;}
+.installs{font-size:11px;color:var(--text-muted);display:inline-flex;align-items:center;gap:4px;font-weight:600;}
+.installs svg{width:12px;height:12px;}
+
+/* ============================================================
+   我的技能（列表）
+   ============================================================ */
+.list-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;}
+.list-head,.skill-row{
+  display:grid;grid-template-columns:minmax(220px,2fr) 110px 110px 90px 120px 150px;
+  gap:14px;align-items:center;padding:14px 20px;
+}
+.list-head{
+  background:var(--surface-alt);border-bottom:1px solid var(--border);
+  font-size:11.5px;font-weight:700;color:var(--text-muted);letter-spacing:.3px;
+}
+.skill-row{border-bottom:1px solid var(--border-light);transition:var(--transition);}
+.skill-row:last-child{border-bottom:none;}
+.skill-row:hover{background:var(--surface-alt);}
+.row-skill{display:flex;align-items:center;gap:12px;min-width:0;cursor:pointer;}
+.row-skill .skill-icon{width:38px;height:38px;border-radius:var(--radius-sm);}
+.row-skill .skill-icon svg{width:18px;height:18px;}
+.row-name{font-weight:700;font-size:13.5px;line-height:1.3;}
+.row-sub{font-size:11px;color:var(--text-muted);margin-top:1px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.row-stat{font-size:12.5px;color:var(--text-secondary);font-weight:600;}
+.row-stat small{display:block;font-size:10.5px;color:var(--text-muted);font-weight:500;}
+.row-actions{display:flex;gap:6px;justify-content:flex-end;}
+.icon-btn{
+  width:30px;height:30px;border-radius:var(--radius-sm);border:1px solid var(--border);
+  background:var(--surface);color:var(--text-muted);display:inline-flex;align-items:center;justify-content:center;
+  transition:var(--transition);
+}
+.icon-btn svg{width:15px;height:15px;}
+.icon-btn:hover{border-color:var(--primary-border);color:var(--primary);}
+.icon-btn.danger:hover{border-color:var(--red-border);color:var(--red);}
+/* toggle */
+.toggle{position:relative;display:inline-block;width:40px;height:22px;flex-shrink:0;}
+.toggle input{opacity:0;width:0;height:0;}
+.toggle .track{
+  position:absolute;inset:0;background:var(--border-strong);border-radius:9999px;transition:var(--transition);cursor:pointer;
+}
+.toggle .track::after{
+  content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;
+  background:#fff;transition:var(--transition);box-shadow:0 1px 3px rgba(0,0,0,.2);
+}
+.toggle input:checked + .track{background:var(--grad-primary-2);}
+.toggle input:checked + .track::after{transform:translateX(18px);}
+
+/* ============================================================
+   空态
+   ============================================================ */
+.empty{
+  padding:70px 20px;text-align:center;border:1.5px dashed var(--border-strong);
+  border-radius:var(--radius-lg);background:var(--surface);
+}
+.empty-icon{
+  width:64px;height:64px;border-radius:var(--radius-lg);margin:0 auto 16px;
+  background:var(--primary-light);display:flex;align-items:center;justify-content:center;
+}
+.empty-icon svg{width:30px;height:30px;color:var(--primary);}
+.empty-title{font-weight:800;font-size:16px;margin-bottom:6px;}
+.empty-desc{font-size:13px;color:var(--text-muted);margin-bottom:20px;}
+.empty-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+
+/* ============================================================
+   详情抽屉
+   ============================================================ */
+.overlay{
+  position:fixed;inset:0;background:rgba(15,23,42,.35);backdrop-filter:blur(2px);
+  opacity:0;pointer-events:none;transition:opacity .3s;z-index:90;
+}
+.overlay.show{opacity:1;pointer-events:auto;}
+.drawer{
+  position:fixed;top:0;right:0;bottom:0;width:480px;max-width:100vw;background:var(--surface);
+  box-shadow:-16px 0 48px rgba(15,23,42,.16);z-index:100;transform:translateX(105%);
+  transition:transform .35s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;
+}
+.drawer.show{transform:translateX(0);}
+.drawer-head{padding:24px 24px 18px;border-bottom:1px solid var(--border-light);position:relative;}
+.drawer-close{
+  position:absolute;top:18px;right:18px;width:32px;height:32px;border-radius:var(--radius-sm);
+  border:1px solid var(--border);background:var(--surface);color:var(--text-muted);
+  display:flex;align-items:center;justify-content:center;transition:var(--transition);
+}
+.drawer-close:hover{color:var(--text);border-color:var(--border-strong);}
+.drawer-close svg{width:16px;height:16px;}
+.drawer-title-row{display:flex;gap:14px;align-items:flex-start;padding-right:40px;}
+.drawer-icon{width:54px;height:54px;border-radius:var(--radius);flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+.drawer-icon svg{width:26px;height:26px;}
+.drawer-name{font-size:19px;font-weight:800;letter-spacing:-.3px;line-height:1.25;}
+.drawer-badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;}
+.drawer-body{flex:1;overflow-y:auto;padding:22px 24px;}
+.drawer-section{margin-bottom:24px;}
+.drawer-label{
+  font-size:11px;font-weight:800;color:var(--text-muted);letter-spacing:.6px;
+  text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:8px;
+}
+.drawer-label::before{content:'';width:3px;height:12px;border-radius:2px;background:var(--grad-primary);}
+.drawer-desc{font-size:13.5px;color:var(--text-secondary);line-height:1.7;}
+/* 示例对话气泡 */
+.example{
+  background:var(--surface-alt);border:1px solid var(--border-light);border-radius:var(--radius);
+  padding:12px 14px;margin-bottom:8px;display:flex;gap:10px;align-items:flex-start;
+}
+.example-q{
+  background:var(--grad-primary-2);color:#fff;border-radius:var(--radius) var(--radius) 4px var(--radius);
+}
+.example .avatar-dot{
+  width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;color:#fff;
+}
+.example-q .avatar-dot{background:rgba(255,255,255,.25);}
+.example-a .avatar-dot{background:var(--grad-primary);}
+.example-text{font-size:12.5px;line-height:1.55;padding-top:2px;}
+.example-q .example-text{color:#fff;}
+.example-a{background:var(--surface);border:1px solid var(--border);}
+.example-a .example-text{color:var(--text-secondary);}
+/* 脚本包文件树 */
+.file-tree{background:var(--surface-alt);border:1px solid var(--border-light);border-radius:var(--radius);padding:12px 14px;}
+.file-node{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:var(--radius-xs);font-size:12.5px;font-family:'JetBrains Mono','Fira Code',monospace;}
+.file-node:hover{background:var(--surface);}
+.file-node svg{width:14px;height:14px;color:var(--text-muted);flex-shrink:0;}
+.file-node .f-type{margin-left:auto;font-size:10px;color:var(--text-placeholder);font-family:inherit;}
+/* 试一试面板 */
+.try-panel{background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;}
+.try-head{
+  padding:12px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;
+  font-weight:700;font-size:13px;user-select:none;
+}
+.try-head svg{width:16px;height:16px;color:var(--primary);}
+.try-head .chev{margin-left:auto;transition:transform .25s;width:14px;height:14px;color:var(--text-muted);}
+.try-panel.open .try-head .chev{transform:rotate(180deg);}
+.try-body{padding:0 16px 16px;display:none;}
+.try-panel.open .try-body{display:block;}
+.field{margin-bottom:12px;}
+.field label{display:block;font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:6px;}
+.field label .req{color:var(--red);}
+.field input,.field select,.field textarea{
+  width:100%;padding:9px 12px;border-radius:var(--radius-sm);border:1.5px solid var(--border);
+  font-size:13px;font-family:inherit;outline:none;transition:var(--transition);background:var(--surface);
+}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(99,102,241,.12);}
+.try-result{
+  margin-top:12px;border-radius:var(--radius-sm);padding:12px 14px;font-size:12.5px;display:none;
+}
+.try-result.show{display:block;animation:fadeIn .3s;}
+.try-result.ok{background:var(--green-bg);border:1px solid var(--green-border);color:#047857;}
+.try-result pre{white-space:pre-wrap;word-break:break-word;font-family:'JetBrains Mono',monospace;font-size:11.5px;margin-top:8px;color:var(--text);background:rgba(255,255,255,.6);padding:10px;border-radius:var(--radius-xs);max-height:200px;overflow:auto;}
+.try-meta{font-size:10.5px;margin-top:6px;opacity:.7;}
+.adv-debug{margin-top:10px;border-top:1px dashed var(--border);padding-top:10px;}
+.adv-debug a{font-size:11.5px;color:var(--text-muted);text-decoration:none;display:inline-flex;align-items:center;gap:5px;}
+.adv-debug a:hover{color:var(--primary);}
+/* 抽屉底部操作栏 */
+.drawer-foot{
+  padding:16px 24px;border-top:1px solid var(--border-light);display:flex;gap:10px;align-items:center;
+  background:var(--surface);position:relative;
+}
+.drawer-foot .btn{flex:1;justify-content:center;}
+.agent-picker{position:relative;flex:1;}
+.agent-menu{
+  position:absolute;bottom:calc(100% + 8px);left:0;right:0;background:var(--surface);
+  border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-lg);
+  padding:6px;display:none;z-index:10;
+}
+.agent-menu.show{display:block;animation:fadeIn .2s;}
+.agent-opt{
+  display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--radius-sm);
+  cursor:pointer;transition:var(--transition);font-size:13px;font-weight:600;width:100%;border:none;background:transparent;text-align:left;
+}
+.agent-opt:hover{background:var(--primary-light);}
+.agent-opt .ao-icon{width:28px;height:28px;border-radius:var(--radius-xs);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.agent-opt small{display:block;font-size:10.5px;color:var(--text-muted);font-weight:500;}
+/* meta */
+.meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.meta-item{background:var(--surface-alt);border:1px solid var(--border-light);border-radius:var(--radius-sm);padding:10px 12px;}
+.meta-item .k{font-size:10.5px;color:var(--text-muted);font-weight:600;}
+.meta-item .v{font-size:13px;font-weight:700;margin-top:2px;}
+
+/* ============================================================
+   Toast
+   ============================================================ */
+.toast{
+  position:fixed;top:24px;left:50%;transform:translateX(-50%) translateY(-20px);
+  background:var(--text);color:#fff;padding:12px 20px;border-radius:var(--radius);
+  font-size:13px;font-weight:600;box-shadow:var(--shadow-lg);z-index:200;
+  opacity:0;pointer-events:none;transition:all .3s;display:flex;align-items:center;gap:10px;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.toast svg{width:16px;height:16px;color:var(--green);}
+
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+.fade-in{animation:fadeIn .4s;}
+
+/* ============================================================
+   响应式
+   ============================================================ */
+@media (max-width:1024px){
+  .sidebar{transform:translateX(-100%);transition:transform .3s;}
+  .sidebar.open{transform:translateX(0);}
+  .main{margin-left:0;}
+  .menu-btn{display:inline-flex !important;}
+  .list-head{display:none;}
+  .skill-row{grid-template-columns:1fr;gap:10px;}
+  .row-actions{justify-content:flex-start;}
+}
+@media (min-width:1025px){.menu-btn{display:none;}}
+@media (max-width:640px){
+  .content{padding:16px;}
+  .skill-grid{grid-template-columns:1fr;}
+  .drawer{width:100vw;}
+  .page-title{font-size:22px;}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none !important;transition:none !important;}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ 侧边栏 ============ -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <div class="icon-box">灵一</div>
+    <div>
+      <div class="brand-name">AgentOne</div>
+      <div class="brand-sub">开源 AI Agent 中台</div>
+    </div>
+  </div>
+  <nav class="sidebar-nav" id="sidebarNav"></nav>
+  <div class="sidebar-footer">
+    <div class="user-avatar">王</div>
+    <div class="user-meta">
+      <div class="user-name">王小明</div>
+      <div class="user-ws">默认工作空间</div>
+    </div>
+  </div>
+</aside>
+
+<!-- ============ 主区 ============ -->
+<div class="main">
+  <header class="header">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <button class="header-btn menu-btn" onclick="document.getElementById('sidebar').classList.toggle('open')" title="菜单">☰</button>
+      <div class="header-breadcrumb">构建 / Skill 中心</div>
+    </div>
+    <div class="header-right">
+      <button class="header-btn" title="暗色模式">🌙</button>
+      <button class="header-btn" title="帮助">?</button>
+    </div>
+  </header>
+
+  <div class="content">
+    <!-- 页头 -->
+    <div class="page-head">
+      <div>
+        <div class="page-title">Skill 中心</div>
+        <div class="page-desc">市场、销售、客服、人事、财务……每个工种都能找到趁手的 AI 技能，或把团队经验沉淀成新技能。</div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-ghost" onclick="showToast('已选择 agentone-skill JSON 文件（演示）')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+          导入 Skill
+        </button>
+        <a class="btn btn-gradient" href="page-create.html">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+          创建技能
+        </a>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs" role="tablist">
+      <button class="tab active" id="tab-plaza" onclick="switchView('plaza')" role="tab">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+        技能广场
+      </button>
+      <button class="tab" id="tab-mine" onclick="switchView('mine')" role="tab">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 7l10-5 10 5-10 5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        我的技能 <span class="count" id="mineCount">0</span>
+      </button>
+    </div>
+
+    <!-- ===== 广场视图 ===== -->
+    <div id="view-plaza">
+      <div class="toolbar">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          <input class="search-input" id="searchInput" aria-label="搜索技能" placeholder="搜索技能：名称、用途、关键词…" oninput="renderPlaza()" />
+        </div>
+      </div>
+      <div class="chips" id="catChips"></div>
+
+      <div id="featuredWrap">
+        <div class="section-title">官方精选 <span class="hint">开箱即用，覆盖常见工种场景</span></div>
+        <div class="skill-grid" id="featuredGrid"></div>
+      </div>
+
+      <div class="section-title" id="allTitle">全部技能</div>
+      <div class="skill-grid" id="skillGrid"></div>
+
+      <div id="plazaEmpty" style="display:none;">
+        <div class="empty">
+          <div class="empty-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          </div>
+          <div class="empty-title">没有找到相关技能</div>
+          <div class="empty-desc">换个关键词试试，或按工种浏览；也可以把团队经验沉淀成一个新技能。</div>
+          <div class="empty-actions">
+            <button class="btn btn-ghost" onclick="clearFilter()">清空筛选</button>
+            <a class="btn btn-gradient" href="page-create.html">创建技能</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 我的技能视图 ===== -->
+    <div id="view-mine" style="display:none;">
+      <div class="toolbar">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          <input class="search-input" id="mineSearch" placeholder="搜索我的技能…" oninput="renderMine()" />
+        </div>
+        <select class="search-input" style="width:auto;min-width:130px;padding-left:12px;" id="mineStatus" aria-label="按状态筛选" onchange="renderMine()">
+          <option value="">全部状态</option>
+          <option value="on">已启用</option>
+          <option value="off">已停用</option>
+        </select>
+      </div>
+      <div id="mineListWrap"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 详情抽屉 ============ -->
+<div class="overlay" id="overlay" onclick="closeDrawer()"></div>
+<aside class="drawer" id="drawer" aria-hidden="true"></aside>
+
+<!-- ============ Toast ============ -->
+<div class="toast" id="toast">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+  <span id="toastText"></span>
+</div>
+
+<script>
+/* ============================================================
+   图标库（内联 SVG，Lucide 风格）
+   ============================================================ */
+const ICONS = {
+  write:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>',
+  mail:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 6l-10 7L2 6"/></svg>',
+  headset: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 18v-6a9 9 0 0118 0v6"/><path d="M21 19a2 2 0 01-2 2h-1a2 2 0 01-2-2v-3a2 2 0 012-2h3zM3 19a2 2 0 002 2h1a2 2 0 002-2v-3a2 2 0 00-2-2H3z"/></svg>',
+  users:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>',
+  calc:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01"/></svg>',
+  scale:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18M3 7h18"/><path d="M7 7l-3 7a3.5 3.5 0 006 0zM17 7l-3 7a3.5 3.5 0 006 0z"/></svg>',
+  clip:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><path d="M9 12h6M9 16h6"/></svg>',
+  chart:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></svg>',
+  plug:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 2v6M15 2v6"/><path d="M6 8h12v4a6 6 0 01-6 6 6 6 0 01-6-6V8z"/><path d="M12 18v4"/></svg>',
+  book:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>',
+  code:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>',
+  globe:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>',
+  target:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
+  doc:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>',
+  spark:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>',
+  folder:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>',
+  file:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><path d="M13 2v7h7"/></svg>',
+};
+/* 技能图标底色（柔和渐变） */
+const TILE = {
+  indigo:'linear-gradient(135deg,#EEF2FF,#E0E7FF)', purple:'linear-gradient(135deg,#F5F3FF,#EDE9FE)',
+  blue:'linear-gradient(135deg,#EFF6FF,#DBEAFE)',  cyan:'linear-gradient(135deg,#ECFEFF,#CFFAFE)',
+  green:'linear-gradient(135deg,#ECFDF5,#D1FAE5)', orange:'linear-gradient(135deg,#FFFBEB,#FEF3C7)',
+  red:'linear-gradient(135deg,#FEF2F2,#FEE2E2)',
+};
+const TILE_COLOR = {indigo:'#6366F1',purple:'#8B5CF6',blue:'#3B82F6',cyan:'#06B6D4',green:'#10B981',orange:'#F59E0B',red:'#EF4444'};
+
+/* ============================================================
+   工种分类
+   ============================================================ */
+const CATS = [
+  {key:'all', label:'全部', icon:'spark'},
+  {key:'market', label:'市场', icon:'target'},
+  {key:'sales', label:'销售', icon:'chart'},
+  {key:'service', label:'客服', icon:'headset'},
+  {key:'hr', label:'人事', icon:'users'},
+  {key:'finance', label:'财务', icon:'calc'},
+  {key:'legal', label:'法务合规', icon:'scale'},
+  {key:'admin', label:'行政', icon:'clip'},
+  {key:'data', label:'数据分析', icon:'chart'},
+  {key:'it', label:'IT 集成', icon:'plug'},
+];
+const CAT_LABEL = Object.fromEntries(CATS.map(c=>[c.key,c.label]));
+
+/* ============================================================
+   Mock 技能数据（source: official/custom/imported/builtin/mcp）
+   ============================================================ */
+const SKILLS = [
+  // ---- 官方精选 ----
+  {id:'s-xhs', name:'小红书爆款文案', icon:'write', tile:'red', cat:'market', source:'official', type:'prompt',
+   author:'AgentOne 官方', installs:1280, enabled:true, version:'v1.3', updatedAt:'2026-08-02',
+   tagline:'输入产品卖点，产出带标题、正文、标签的小红书风格种草文案。',
+   desc:'面向市场与新媒体运营。把产品卖点、目标人群、活动信息作为输入，按照小红书的表达习惯生成「标题 + 正文 + 话题标签」三段式文案，内置 6 种爆款结构（测评/清单/教程/避坑/合集/故事），可直接复制发布。',
+   examples:[
+     {q:'帮我写一篇夏季防晒霜的小红书种草文案，主打学生党平价。', a:'已按「清单体」生成：标题 3 条备选、正文 320 字、话题标签 8 个。'},
+     {q:'把这段产品介绍改写成小红书风格。', a:'已重写，口语化处理并补充了 2 个互动提问。'},
+   ],
+   params:[{key:'product',label:'产品 / 主题',req:true,ph:'如：夏季防晒霜'},{key:'audience',label:'目标人群',ph:'如：学生党'},{key:'style',label:'风格',type:'select',opts:['测评','清单','教程','避坑','合集']}]},
+
+  {id:'s-complaint', name:'客诉处理 SOP', icon:'headset', tile:'cyan', cat:'service', source:'official', type:'prompt',
+   author:'AgentOne 官方', installs:964, enabled:true, version:'v2.1', updatedAt:'2026-07-28',
+   tagline:'标准客诉处理流程与话术，安抚、定级、升级、回访一步不漏。',
+   desc:'面向客服与售后团队。内置客诉四步处理法（安抚情绪 → 问题定级 → 处理升级 → 结果回访），附带 12 类高频投诉场景的应对话术模板，帮助新客服快速上手、老客服保持服务一致性。',
+   examples:[
+     {q:'客户投诉物流延迟三天，情绪很激动，我该怎么回？', a:'已给出安抚话术 + 定级建议（P2）+ 补偿方案选项。'},
+   ],
+   params:[{key:'scene',label:'投诉场景',req:true,ph:'如：物流延迟'},{key:'level',label:'紧急程度',type:'select',opts:['一般','重要','紧急']}]},
+
+  {id:'s-jd', name:'招聘 JD 生成器', icon:'users', tile:'indigo', cat:'hr', source:'official', type:'prompt',
+   author:'AgentOne 官方', installs:812, enabled:true, version:'v1.6', updatedAt:'2026-08-05',
+   tagline:'输入岗位与要求，一键产出结构规范、有吸引力的招聘 JD。',
+   desc:'面向 HR 与用人部门。按「岗位职责 + 任职要求 + 加分项 + 福利亮点」标准结构生成 JD，自动规避歧视性表述，并可按公司语气调整风格，让招聘信息既专业又有吸引力。',
+   examples:[
+     {q:'帮我写一个高级前端工程师的 JD，要求会 Vue。', a:'已生成结构化 JD，含 5 条职责、6 条要求与 3 条加分项。'},
+   ],
+   params:[{key:'title',label:'岗位名称',req:true,ph:'如：高级前端工程师'},{key:'req',label:'核心要求',ph:'如：3 年经验，会 Vue'}]},
+
+  {id:'s-contract', name:'合同审查清单', icon:'scale', tile:'purple', cat:'legal', source:'official', type:'prompt',
+   author:'AgentOne 官方', installs:706, enabled:false, version:'v1.2', updatedAt:'2026-07-20',
+   tagline:'按 38 项风险点逐条核查合同，输出风险标注与修改建议。',
+   desc:'面向法务与商务。依据通用合同审查框架（主体、标的、价款、履行、违约、争议解决六大块共 38 项风险点）对合同文本逐条核查，标注高/中/低风险并给出修改建议，帮助在签署前系统性排雷。',
+   examples:[
+     {q:'帮我审一下这份采购合同有没有风险点。', a:'已核查，发现 2 处高风险（违约责任缺失、付款条件模糊）+ 4 处中风险。'},
+   ],
+   params:[{key:'contract',label:'合同类型',req:true,ph:'如：采购合同'}]},
+
+  {id:'s-weekly', name:'周报生成助手', icon:'doc', tile:'green', cat:'admin', source:'official', type:'prompt',
+   author:'AgentOne 官方', installs:1101, enabled:true, version:'v1.8', updatedAt:'2026-08-08',
+   tagline:'把这周的碎片记录，整理成条理清晰的周报。',
+   desc:'面向所有需要写周报的同学。把零散的工作记录、要点甚至语音转文字丢给它，自动整理为「本周完成 / 进行中 / 下周计划 / 风险与求助」四段式周报，语气专业、重点突出。',
+   examples:[
+     {q:'把这几条工作内容整理成周报。', a:'已整理为四段式周报，并提炼了 1 条需要上级支持的事项。'},
+   ],
+   params:[{key:'notes',label:'本周工作要点',req:true,ph:'粘贴你的工作记录…',type:'textarea'}]},
+
+  // ---- 脚本包示例（展示 Scripts 新形态）----
+  {id:'s-dataweekly', name:'数据周报分析框架', icon:'chart', tile:'blue', cat:'data', source:'custom', type:'prompt',
+   isScript:true, author:'数据团队 · 李婷', installs:188, enabled:true, version:'v0.9', updatedAt:'2026-08-09',
+   tagline:'SKILL.md + 分析脚本 + 模板，跑完数据直接出周报初稿。',
+   desc:'由数据团队沉淀的脚本包技能。包含分析方法论（SKILL.md）、一个指标计算脚本（scripts/analyze.py）与周报模板（references/template.md）。适合有固定数据口径、希望「跑脚本 + 套模板」自动出周报的团队。',
+   examples:[
+     {q:'用我们的口径生成本周数据周报初稿。', a:'已按脚本计算核心指标并套用模板，产出初稿（脚本执行需沙箱支持）。'},
+   ],
+   files:[
+     {name:'SKILL.md', type:'说明', icon:'doc'},
+     {name:'scripts/analyze.py', type:'脚本 · 暂不执行', icon:'code'},
+     {name:'references/template.md', type:'模板', icon:'file'},
+   ],
+   params:[{key:'datasource',label:'数据来源',ph:'如：运营后台导出 CSV'}]},
+
+  // ---- 自建 / 导入 / 内置 / MCP ----
+  {id:'s-followup', name:'客户跟进邮件', icon:'mail', tile:'orange', cat:'sales', source:'custom', type:'prompt',
+   author:'销售团队 · 陈远', installs:342, enabled:true, version:'v1.1', updatedAt:'2026-08-06',
+   tagline:'按客户阶段写跟进邮件，语气分寸拿捏到位。',
+   desc:'面向销售。根据客户所处阶段（初识 / 报价后 / 沉默唤醒）生成跟进邮件，控制篇幅与推进动作，避免过度打扰，帮助提高回复率。',
+   examples:[{q:'给报价后一周没回复的客户写封跟进邮件。',a:'已生成，语气温和并附一个轻量级的推进问题。'}],
+   params:[{key:'stage',label:'客户阶段',req:true,type:'select',opts:['初识','报价后','沉默唤醒']},{key:'name',label:'客户称呼',ph:'如：王总'}]},
+
+  {id:'s-reimburse', name:'报销政策问答', icon:'calc', tile:'green', cat:'finance', source:'custom', type:'prompt',
+   author:'财务部', installs:256, enabled:true, version:'v1.0', updatedAt:'2026-07-30',
+   tagline:'差旅、招待、办公用品怎么报？问它就有标准答案。',
+   desc:'把公司报销制度沉淀为问答技能，员工直接提问即可拿到「能不能报、标准多少、要什么凭证」的准确回答，减少财务重复解释。',
+   examples:[{q:'出差打车一天最多报多少？',a:'按制度：市内交通每日上限 120 元，需附行程单。'}],
+   params:[]},
+
+  {id:'s-faq', name:'售后 FAQ 话术库', icon:'book', tile:'cyan', cat:'service', source:'imported', type:'prompt',
+   author:'导入自「客服空间」', installs:133, enabled:true, version:'v1.0', updatedAt:'2026-08-04',
+   tagline:'退换货、保修、发票等高频问题的标准答复。',
+   desc:'从客服空间导入的话术库技能，覆盖退换货、保修、发票、账户等 40 个高频问题，保证多客服口径一致。',
+   examples:[{q:'客户问超过 7 天还能退吗？',a:'已给出标准答复：7 天无理由，质量问题 15 天内可换。'}],
+   params:[]},
+
+  {id:'s-crm', name:'CRM 客户查询', icon:'users', tile:'blue', cat:'sales', source:'custom', type:'api',
+   author:'IT 集成', installs:97, enabled:true, version:'v1.0', updatedAt:'2026-08-01',
+   tagline:'对话中直接查 CRM 客户信息，不用切系统。',
+   desc:'通过 API 封装对接 CRM 系统，支持按客户名 / 手机号查询客户档案、最近跟进记录与商机状态。属于「接入已有系统」类技能，由 IT 配置。',
+   examples:[{q:'查一下华创科技最近的跟进记录。',a:'返回 3 条跟进记录，最近一次为 8 月 5 日电话沟通。'}],
+   params:[{key:'keyword',label:'客户名 / 手机号',req:true,ph:'如：华创科技'}]},
+
+  {id:'s-kb', name:'知识库检索', icon:'book', tile:'indigo', cat:'it', source:'builtin', type:'builtin',
+   author:'系统内置', installs:null, enabled:true, version:'内置', updatedAt:'-',
+   tagline:'从企业知识库中检索相关内容，支撑 Agent 有据可依地回答。',
+   desc:'系统内置技能。基于向量检索从当前工作空间的知识库中召回相关片段，供 Agent 引用作答，是所有「问答型 Agent」的基础能力。',
+   examples:[{q:'我们的年假制度是怎样的？',a:'已从知识库召回《员工手册》相关条款。'}],
+   params:[{key:'query',label:'检索问题',req:true,ph:'如：年假制度'}]},
+
+  {id:'s-http', name:'HTTP 请求', icon:'globe', tile:'orange', cat:'it', source:'builtin', type:'builtin',
+   author:'系统内置', installs:null, enabled:false, version:'内置', updatedAt:'-',
+   tagline:'通用 HTTP 调用能力，供 Agent 访问受信任的外部接口。',
+   desc:'系统内置技能。允许 Agent 向已加名单的外部接口发起 HTTP 请求，内置 SSRF 防护。面向集成场景，业务用户一般无需直接启用。',
+   examples:[],
+   params:[{key:'url',label:'目标地址',req:true,ph:'https://…'}]},
+
+  {id:'s-code', name:'代码执行', icon:'code', tile:'purple', cat:'it', source:'builtin', type:'builtin',
+   author:'系统内置', installs:null, enabled:false, version:'内置', updatedAt:'-',
+   tagline:'在受控环境中运行代码片段，完成计算与数据处理。',
+   desc:'系统内置技能。在受控环境中执行代码片段，用于数值计算、数据清洗等场景。出于安全考虑默认停用。',
+   examples:[],
+   params:[{key:'code',label:'代码片段',req:true,type:'textarea',ph:'print("hello")'}]},
+
+  {id:'s-mail', name:'邮件发送', icon:'mail', tile:'cyan', cat:'it', source:'mcp', type:'mcp',
+   author:'MCP · 办公连接器', installs:64, enabled:true, version:'-', updatedAt:'2026-08-03',
+   tagline:'通过 MCP 连接器发送邮件，支持正文与抄送。',
+   desc:'通过 MCP 协议接入的邮件服务工具，Agent 可在对话确认后发送邮件。来自「办公连接器」MCP Server。',
+   examples:[{q:'给团队发一封周会改期的邮件。',a:'已生成邮件草稿，确认后发送。'}],
+   params:[{key:'to',label:'收件人',req:true,ph:'name@company.com'},{key:'subject',label:'主题',req:true}]},
+];
+
+const AGENTS = [
+  {name:'客服助手', desc:'售后咨询 · 客诉处理', icon:'headset', tile:'cyan'},
+  {name:'销售管家', desc:'客户跟进 · 商机管理', icon:'chart', tile:'orange'},
+  {name:'通用助理', desc:'日常办公 · 知识问答', icon:'spark', tile:'indigo'},
+];
+
+/* ============================================================
+   状态
+   ============================================================ */
+let activeCat = 'all';
+let currentView = 'plaza';
+let drawerSkill = null;
+
+/* ============================================================
+   渲染：侧边栏导航
+   ============================================================ */
+const NAV = [
+  {section:'概览', items:[{label:'工作台', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>'}]},
+  {section:'构建', items:[
+    {label:'Agent 管理', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="9" r="3"/><circle cx="8" cy="16" r="2"/><circle cx="16" cy="16" r="2"/><path d="M12 12v2M9.2 14.5l3 3M14.8 14.5l-3 3"/></svg>'},
+    {label:'知识库', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>'},
+    {label:'Skill 中心', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>', active:true},
+    {label:'MCP 集成', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 2v6M15 2v6"/><path d="M6 8h12v4a6 6 0 01-6 6 6 6 0 01-6-6V8z"/><path d="M12 18v4"/></svg>'},
+  ]},
+  {section:'接入', items:[
+    {label:'模型管理', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><circle cx="6" cy="6" r="1" fill="currentColor"/><circle cx="6" cy="18" r="1" fill="currentColor"/></svg>'},
+    {label:'API Key', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>'},
+  ]},
+  {section:'管理', items:[
+    {label:'工作空间', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>'},
+  ]},
+];
+function renderNav(){
+  const nav = document.getElementById('sidebarNav');
+  nav.innerHTML = NAV.map(g=>`
+    <div class="nav-section-label">${g.section}</div>
+    ${g.items.map(it=>`<button class="nav-item ${it.active?'active':''}" ${it.active?'':'onclick="showToast(\'原型演示：仅 Skill 中心可交互\')"'}>
+      <span class="nav-icon">${it.icon}</span><span class="nav-label">${it.label}</span>
+    </button>`).join('')}
+  `).join('');
+}
+
+/* ============================================================
+   渲染：工种 chips
+   ============================================================ */
+function renderChips(){
+  const wrap = document.getElementById('catChips');
+  wrap.innerHTML = CATS.map(c=>`
+    <button class="chip ${activeCat===c.key?'active':''}" onclick="setCat('${c.key}')">
+      ${c.key!=='all'?`<span style="display:inline-flex;width:15px;height:15px;">${ICONS[c.icon]}</span>`:''}${c.label}
+    </button>`).join('');
+}
+function setCat(k){ activeCat=k; renderPlaza(); }
+function clearFilter(){ activeCat='all'; document.getElementById('searchInput').value=''; renderPlaza(); }
+
+/* ============================================================
+   卡片 & 徽章
+   ============================================================ */
+function sourceBadge(s){
+  const map={official:['badge-official','官方'],custom:['badge-custom','自建'],imported:['badge-imported','导入'],builtin:['badge-builtin','内置'],mcp:['badge-mcp','MCP']};
+  const [cls,txt]=map[s.source];
+  return `<span class="badge ${cls}">${txt}</span>`;
+}
+function skillIcon(s,size){
+  return `<div class="skill-icon" style="background:${TILE[s.tile]};color:${TILE_COLOR[s.tile]};">${ICONS[s.icon]}</div>`;
+}
+function cardHTML(s){
+  return `<div class="skill-card fade-in" onclick="openDrawer('${s.id}')" tabindex="0" role="button"
+      onkeydown="if(event.key==='Enter')openDrawer('${s.id}')">
+    <div class="skill-card-top">
+      ${skillIcon(s)}
+      <div class="skill-card-title">
+        <div class="skill-name">${s.name}</div>
+        <div class="skill-author">${s.author}</div>
+      </div>
+    </div>
+    <div class="skill-tagline">${s.tagline}</div>
+    <div class="skill-card-foot">
+      <span class="badge badge-cat">${CAT_LABEL[s.cat]}</span>
+      ${s.isScript?'<span class="badge badge-script">脚本包</span>':''}
+      ${sourceBadge(s)}
+      <span class="spacer"></span>
+      ${s.installs?`<span class="installs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>${s.installs}</span>`:''}
+    </div>
+  </div>`;
+}
+
+/* ============================================================
+   渲染：广场
+   ============================================================ */
+function filterSkills(){
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  return SKILLS.filter(s=>{
+    const catOk = activeCat==='all' || s.cat===activeCat;
+    const qOk = !q || (s.name+s.tagline+s.desc+CAT_LABEL[s.cat]).toLowerCase().includes(q);
+    return catOk && qOk;
+  });
+}
+function renderPlaza(){
+  renderChips();
+  const list = filterSkills();
+  const featured = list.filter(s=>s.source==='official');
+  const others = list.filter(s=>s.source!=='official');
+  const fw = document.getElementById('featuredWrap');
+  if(featured.length && !document.getElementById('searchInput').value.trim() && activeCat==='all'){
+    fw.style.display='';
+    document.getElementById('featuredGrid').innerHTML = featured.map(cardHTML).join('');
+    document.getElementById('allTitle').textContent = '全部技能';
+    document.getElementById('skillGrid').innerHTML = list.map(cardHTML).join('');
+  } else {
+    fw.style.display='none';
+    document.getElementById('allTitle').textContent = activeCat==='all' ? '全部技能' : `${CAT_LABEL[activeCat]} · ${list.length} 个技能`;
+    document.getElementById('skillGrid').innerHTML = list.map(cardHTML).join('');
+  }
+  document.getElementById('plazaEmpty').style.display = list.length ? 'none' : '';
+  document.getElementById('allTitle').style.display = list.length ? '' : 'none';
+}
+
+/* ============================================================
+   渲染：我的技能
+   ============================================================ */
+function renderMine(){
+  const q = document.getElementById('mineSearch').value.trim().toLowerCase();
+  const st = document.getElementById('mineStatus').value;
+  const mine = SKILLS.filter(s=>{
+    const qOk = !q || (s.name+s.tagline).toLowerCase().includes(q);
+    const stOk = !st || (st==='on'?s.enabled:!s.enabled);
+    return qOk && stOk;
+  });
+  document.getElementById('mineCount').textContent = SKILLS.filter(s=>s.enabled).length;
+  const wrap = document.getElementById('mineListWrap');
+  if(!mine.length){
+    wrap.innerHTML = `<div class="empty">
+      <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 7l10-5 10 5-10 5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+      <div class="empty-title">还没有技能</div>
+      <div class="empty-desc">从技能广场安装现成技能，或把团队经验创建成第一个技能。</div>
+      <div class="empty-actions">
+        <button class="btn btn-ghost" onclick="switchView('plaza')">去广场看看</button>
+        <a class="btn btn-gradient" href="page-create.html">创建技能</a>
+      </div>
+    </div>`;
+    return;
+  }
+  const usage = {1:'1,284 次',2:'862 次',3:'451 次',4:'198 次',5:'76 次'};
+  wrap.innerHTML = `<div class="list-wrap">
+    <div class="list-head">
+      <div>技能</div><div>类型</div><div>工种</div><div>状态</div><div>近 7 天调用</div><div style="text-align:right;">操作</div>
+    </div>
+    ${mine.map((s,i)=>`
+    <div class="skill-row fade-in">
+      <div class="row-skill" onclick="openDrawer('${s.id}')">
+        ${skillIcon(s)}
+        <div style="min-width:0;">
+          <div class="row-name">${s.name}</div>
+          <div class="row-sub">${sourceBadge(s)} ${s.isScript?'<span class="badge badge-script">脚本包</span>':''} <span>${s.version}</span></div>
+        </div>
+      </div>
+      <div><span class="badge ${s.type==='api'?'badge-mcp':s.type==='builtin'||s.type==='mcp'?'badge-builtin':'badge-official'}">${
+        s.type==='api'?'API 封装':s.type==='builtin'?'内置':s.type==='mcp'?'MCP':'内容型'}</span></div>
+      <div class="row-stat">${CAT_LABEL[s.cat]}</div>
+      <div>
+        <label class="toggle" title="${s.enabled?'点击停用':'点击启用'}">
+          <input type="checkbox" ${s.enabled?'checked':''} onchange="toggleSkill('${s.id}',this.checked)">
+          <span class="track"></span>
+        </label>
+      </div>
+      <div class="row-stat">${s.enabled?(usage[(i%5)+1]||'54 次'):'—'}<small>${s.enabled?'成功率 '+(97+ (i%3))+'.2%':'已停用'}</small></div>
+      <div class="row-actions">
+        <button class="icon-btn" title="试一试" onclick="openDrawer('${s.id}',true)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3l14 9-14 9V3z"/></svg></button>
+        ${['custom','imported'].includes(s.source)?`
+        <button class="icon-btn" title="编辑" onclick="showToast('进入编辑（演示）')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg></button>
+        <button class="icon-btn" title="导出" onclick="showToast('已导出 ${s.name}（演示）')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></button>
+        <button class="icon-btn danger" title="删除" onclick="showToast('该技能仍被 Agent 绑定，请先解绑（错误码 5005）')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg></button>
+        `:`<span style="font-size:11px;color:var(--text-placeholder);">系统托管</span>`}
+      </div>
+    </div>`).join('')}
+  </div>`;
+}
+function toggleSkill(id,on){
+  const s = SKILLS.find(x=>x.id===id); if(!s) return;
+  s.enabled = on;
+  showToast(on?`已启用「${s.name}」`:`已停用「${s.name}」`);
+  renderMine();
+}
+
+/* ============================================================
+   详情抽屉
+   ============================================================ */
+function openDrawer(id, autoTry){
+  const s = SKILLS.find(x=>x.id===id); if(!s) return;
+  drawerSkill = s;
+  const d = document.getElementById('drawer');
+  const editable = ['custom','imported'].includes(s.source);
+  d.innerHTML = `
+    <div class="drawer-head">
+      <button class="drawer-close" onclick="closeDrawer()" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      <div class="drawer-title-row">
+        <div class="drawer-icon" style="background:${TILE[s.tile]};color:${TILE_COLOR[s.tile]};">${ICONS[s.icon]}</div>
+        <div>
+          <div class="drawer-name">${s.name}</div>
+          <div class="drawer-badges">
+            <span class="badge badge-cat">${CAT_LABEL[s.cat]}</span>
+            ${sourceBadge(s)}
+            ${s.isScript?'<span class="badge badge-script">脚本包</span>':''}
+            ${s.enabled?'<span class="badge" style="background:var(--green-bg);color:var(--green);border-color:var(--green-border);">已启用</span>':'<span class="badge badge-custom">未启用</span>'}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="drawer-body">
+      <div class="drawer-section">
+        <div class="drawer-label">它能做什么</div>
+        <div class="drawer-desc">${s.desc}</div>
+      </div>
+
+      ${s.examples && s.examples.length?`
+      <div class="drawer-section">
+        <div class="drawer-label">你可以这样问</div>
+        ${s.examples.map(e=>`
+          <div class="example example-q"><span class="avatar-dot">我</span><span class="example-text">${e.q}</span></div>
+          <div class="example example-a"><span class="avatar-dot">AI</span><span class="example-text">${e.a}</span></div>
+        `).join('')}
+      </div>`:''}
+
+      ${s.isScript?`
+      <div class="drawer-section">
+        <div class="drawer-label">技能包文件</div>
+        <div class="file-tree">
+          ${s.files.map(f=>`<div class="file-node"><span style="display:inline-flex;width:14px;height:14px;">${ICONS[f.icon]}</span>${f.name}<span class="f-type">${f.type}</span></div>`).join('')}
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:8px;">注：脚本文件本期仅随包存储与分发，服务端执行将在沙箱能力上线后开放。</div>
+      </div>`:''}
+
+      <div class="drawer-section">
+        <div class="drawer-label">试一试</div>
+        <div class="try-panel ${autoTry?'open':''}" id="tryPanel">
+          <div class="try-head" onclick="document.getElementById('tryPanel').classList.toggle('open')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3l14 9-14 9V3z"/></svg>
+            运行一次，看看效果
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </div>
+          <div class="try-body">
+            ${s.params.length ? s.params.map(p=>`
+              <div class="field">
+                <label>${p.label}${p.req?' <span class="req">*</span>':''}</label>
+                ${p.type==='select'
+                  ? `<select id="p-${p.key}">${p.opts.map(o=>`<option>${o}</option>`).join('')}</select>`
+                  : p.type==='textarea'
+                  ? `<textarea id="p-${p.key}" rows="3" placeholder="${p.ph||''}"></textarea>`
+                  : `<input id="p-${p.key}" placeholder="${p.ph||''}">`}
+              </div>`).join('')
+              : `<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">该技能无需参数，直接运行即可。</div>`}
+            <button class="btn btn-gradient btn-sm" onclick="runTry()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 3l14 9-14 9V3z"/></svg> 运行
+            </button>
+            <div class="try-result" id="tryResult"></div>
+            <div class="adv-debug">
+              <a href="#" onclick="showToast('高级调试：参数预检 → 执行计划 → 真实执行（复用三步向导，演示）');return false;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.9 4.9l2.9 2.9M16.2 16.2l2.9 2.9M2 12h4M18 12h4M4.9 19.1l2.9-2.9M16.2 7.8l2.9-2.9"/></svg>
+                高级调试（参数预检 / 执行计划）
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="drawer-section">
+        <div class="drawer-label">技能信息</div>
+        <div class="meta-grid">
+          <div class="meta-item"><div class="k">版本</div><div class="v">${s.version}</div></div>
+          <div class="meta-item"><div class="k">更新时间</div><div class="v">${s.updatedAt}</div></div>
+          <div class="meta-item"><div class="k">调用次数</div><div class="v">${s.installs?s.installs+' 次':'系统内置'}</div></div>
+          <div class="meta-item"><div class="k">来源</div><div class="v">${s.author}</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="drawer-foot">
+      ${editable?`<button class="btn btn-ghost" style="flex:0 0 auto;" onclick="showToast('进入编辑（演示）')">编辑</button>`:''}
+      <div class="agent-picker">
+        <div class="agent-menu" id="agentMenu">
+          ${AGENTS.map(a=>`
+            <button class="agent-opt" onclick="enableToAgent('${a.name}')">
+              <span class="ao-icon" style="background:${TILE[a.tile]};color:${TILE_COLOR[a.tile]};">${ICONS[a.icon]}</span>
+              <span>${a.name}<small>${a.desc}</small></span>
+            </button>`).join('')}
+        </div>
+        <button class="btn btn-gradient" style="width:100%;" onclick="toggleAgentMenu()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          ${s.enabled?'启用到 Agent':'安装并启用到 Agent'}
+        </button>
+      </div>
+    </div>`;
+  document.getElementById('overlay').classList.add('show');
+  d.classList.add('show');
+  d.setAttribute('aria-hidden','false');
+}
+function closeDrawer(){
+  document.getElementById('overlay').classList.remove('show');
+  document.getElementById('drawer').classList.remove('show');
+  document.getElementById('drawer').setAttribute('aria-hidden','true');
+}
+function toggleAgentMenu(){ document.getElementById('agentMenu').classList.toggle('show'); }
+function enableToAgent(name){
+  document.getElementById('agentMenu').classList.remove('show');
+  if(drawerSkill) drawerSkill.enabled = true;
+  showToast(`已启用到「${name}」，去对话页即可使用`);
+  renderMine();
+}
+function runTry(){
+  const s = drawerSkill; if(!s) return;
+  // 简单必填校验
+  for(const p of s.params){
+    if(p.req){
+      const el = document.getElementById('p-'+p.key);
+      if(el && !el.value.trim()){
+        el.focus(); el.style.borderColor='var(--red)';
+        showToast(`请填写「${p.label}」`); return;
+      }
+    }
+  }
+  const box = document.getElementById('tryResult');
+  box.className='try-result show'; box.style.opacity='.6';
+  box.innerHTML='运行中…';
+  setTimeout(()=>{
+    box.style.opacity='1';
+    box.classList.add('ok');
+    const isContent = s.type!=='api';
+    box.innerHTML = `✓ 运行成功
+      <pre>${isContent
+        ? `【${s.name}】已加载技能指令\n\n（内容型技能：渐进式披露，function call 后返回指令全文，供 Agent 按此执行）`
+        : JSON.stringify({code:0, data:{matched:3, sample:'华创科技 · 最近跟进 2026-08-05'}, message:'success'}, null, 2)}</pre>
+      <div class="try-meta">耗时 ${isContent?'2ms（无出站请求）':'186ms'} · 已写入调用审计</div>`;
+  }, 550);
+}
+
+/* ============================================================
+   Toast / 视图切换 / Hash 路由
+   ============================================================ */
+let toastTimer;
+function showToast(msg){
+  const t=document.getElementById('toast');
+  document.getElementById('toastText').textContent=msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),2600);
+}
+function switchView(v){
+  currentView=v;
+  document.getElementById('view-plaza').style.display = v==='plaza'?'':'none';
+  document.getElementById('view-mine').style.display = v==='mine'?'':'none';
+  document.getElementById('tab-plaza').classList.toggle('active',v==='plaza');
+  document.getElementById('tab-mine').classList.toggle('active',v==='mine');
+  if(v==='mine') renderMine();
+  try{ history.replaceState(null,'','#'+v); }catch(e){/* file:// 协议下 history API 受限，忽略 */}
+}
+window.addEventListener('hashchange',()=>{
+  const v=location.hash.replace('#','');
+  if(v==='mine'||v==='plaza') switchView(v);
+});
+
+/* ============================================================
+   初始化
+   ============================================================ */
+renderNav();
+renderPlaza();
+renderMine();
+if(location.hash==='#mine') switchView('mine');
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeDrawer(); });
+</script>
+</body>
+</html>

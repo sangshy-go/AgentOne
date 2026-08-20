@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>创建技能 · AgentOne 灵一</title>
+<style>
+:root{
+  --primary:#6366F1; --primary-hover:#4F46E5; --primary-light:#EEF2FF;
+  --grad-primary:linear-gradient(135deg,#6366F1 0%,#8B5CF6 50%,#06B6D4 100%);
+  --grad-primary-2:linear-gradient(135deg,#6366F1 0%,#8B5CF6 100%);
+  --grad-text:linear-gradient(135deg,#6366F1 0%,#8B5CF6 50%,#06B6D4 100%);
+  --surface:#FFFFFF; --surface-alt:#F8FAFF;
+  --border:#E2E8F0; --border-light:#EEF2FF; --border-strong:#CBD5E1;
+  --text:#0F172A; --text-secondary:#475569; --text-muted:#64748B; --text-placeholder:#94A3B8;
+  --shadow:0 2px 8px rgba(15,23,42,.06); --shadow-md:0 8px 24px rgba(15,23,42,.08);
+  --shadow-lg:0 16px 40px rgba(15,23,42,.10);
+  --glow-primary:0 0 24px rgba(99,102,241,.25); --glow-primary-md:0 8px 32px rgba(99,102,241,.30);
+  --green:#10B981; --green-bg:#ECFDF5; --green-border:#A7F3D0;
+  --orange:#F59E0B; --orange-bg:#FFFBEB; --orange-border:#FDE68A;
+  --red:#EF4444; --red-bg:#FEF2F2; --red-border:#FECACA;
+  --purple:#8B5CF6; --purple-bg:#F5F3FF; --purple-border:#DDD6FE;
+  --indigo:#6366F1; --indigo-bg:#EEF2FF; --indigo-border:#C7D2FE;
+  --blue:#3B82F6; --blue-bg:#EFF6FF; --blue-border:#BFDBFE;
+  --cyan:#06B6D4; --cyan-bg:#ECFEFF; --cyan-border:#A5F3FC;
+  --radius-xs:6px; --radius-sm:8px; --radius:12px; --radius-lg:16px; --radius-xl:20px;
+  --sidebar-w:260px; --header-h:64px; --transition:.25s cubic-bezier(.4,0,.2,1);
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Inter',system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--text);background:#F0F2F8;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+button{font-family:inherit;cursor:pointer;}
+::selection{background:var(--primary);color:#fff;}
+::-webkit-scrollbar{width:6px;height:6px;}::-webkit-scrollbar-thumb{background:var(--primary-border,#C7D2FE);border-radius:3px;}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px;}
+
+/* ---- Shell（与 index.html 一致）---- */
+.sidebar{position:fixed;top:0;left:0;bottom:0;width:var(--sidebar-w);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:50;}
+.sidebar-header{display:flex;align-items:center;gap:10px;padding:18px 20px;border-bottom:1px solid var(--border-light);}
+.icon-box{width:38px;height:38px;border-radius:10px;background:var(--grad-primary);color:#fff;font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;box-shadow:var(--glow-primary);}
+.brand-name{font-weight:800;font-size:16px;letter-spacing:-.3px;}
+.brand-sub{font-size:11px;color:var(--text-muted);font-weight:500;}
+.sidebar-nav{flex:1;overflow-y:auto;padding:14px 12px;}
+.nav-section-label{font-size:11px;font-weight:700;color:var(--text-placeholder);letter-spacing:.5px;padding:14px 10px 6px;}
+.nav-item{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border-radius:var(--radius-sm);border:none;background:transparent;color:var(--text-secondary);font-size:13.5px;font-weight:600;text-align:left;transition:var(--transition);margin-bottom:2px;}
+.nav-item:hover{background:var(--surface-alt);color:var(--text);}
+.nav-item.active{background:var(--grad-primary-2);color:#fff;box-shadow:var(--glow-primary);}
+.nav-icon{width:18px;height:18px;flex-shrink:0;display:inline-flex;}
+.nav-icon svg{width:100%;height:100%;}
+.sidebar-footer{padding:14px 16px;border-top:1px solid var(--border-light);display:flex;align-items:center;gap:10px;}
+.user-avatar{width:34px;height:34px;border-radius:50%;background:var(--grad-primary);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:13px;}
+.user-meta{flex:1;min-width:0;}
+.user-name{font-size:13px;font-weight:700;line-height:1.3;}
+.user-ws{font-size:11px;color:var(--text-muted);}
+.main{margin-left:var(--sidebar-w);min-height:100vh;display:flex;flex-direction:column;}
+.header{height:var(--header-h);background:rgba(255,255,255,.7);backdrop-filter:blur(12px);border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;padding:0 28px;position:sticky;top:0;z-index:40;}
+.header-breadcrumb{font-weight:700;font-size:14px;color:var(--text-secondary);}
+.header-breadcrumb a{color:var(--text-muted);text-decoration:none;}
+.header-breadcrumb a:hover{color:var(--primary);}
+.header-right{display:flex;gap:10px;}
+.header-btn{width:34px;height:34px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text-secondary);font-size:14px;transition:var(--transition);}
+.header-btn:hover{border-color:var(--primary-border,#C7D2FE);color:var(--primary);}
+.content{flex:1;padding:28px;max-width:1000px;width:100%;margin:0 auto;}
+
+/* ---- 步骤指示 ---- */
+.steps{display:flex;align-items:center;gap:0;margin-bottom:28px;}
+.step{display:flex;align-items:center;gap:9px;}
+.step-num{width:28px;height:28px;border-radius:50%;border:2px solid var(--border-strong);color:var(--text-muted);font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;transition:var(--transition);background:var(--surface);}
+.step-label{font-size:13px;font-weight:700;color:var(--text-muted);transition:var(--transition);}
+.step.active .step-num{background:var(--grad-primary-2);color:#fff;border-color:transparent;box-shadow:var(--glow-primary);}
+.step.active .step-label{color:var(--text);}
+.step.done .step-num{background:var(--green);color:#fff;border-color:transparent;}
+.step.done .step-label{color:var(--text-secondary);}
+.step-line{flex:1;height:2px;background:var(--border);margin:0 14px;border-radius:1px;min-width:20px;}
+.step-line.done{background:var(--green);}
+
+.page-title{font-size:26px;font-weight:800;letter-spacing:-.6px;background:var(--grad-text);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px;}
+.page-desc{font-size:13.5px;color:var(--text-muted);font-weight:500;margin-bottom:24px;}
+
+/* ---- 入口卡片 ---- */
+.entry-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;}
+.entry-card{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--radius-lg);padding:20px;cursor:pointer;transition:var(--transition);position:relative;display:flex;flex-direction:column;gap:10px;text-align:left;}
+.entry-card:hover{border-color:var(--primary);box-shadow:var(--shadow-md),var(--glow-primary);transform:translateY(-2px);}
+.entry-card.selected{border-color:var(--primary);background:var(--primary-light);box-shadow:var(--glow-primary);}
+.entry-ic{width:44px;height:44px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;}
+.entry-ic svg{width:22px;height:22px;}
+.entry-title{font-weight:800;font-size:15px;letter-spacing:-.2px;display:flex;align-items:center;gap:8px;}
+.entry-desc{font-size:12.5px;color:var(--text-secondary);line-height:1.55;}
+.entry-for{margin-top:auto;font-size:11px;font-weight:700;color:var(--text-muted);display:flex;align-items:center;gap:5px;}
+.entry-for svg{width:12px;height:12px;}
+.rec-tag{position:absolute;top:-9px;right:14px;background:var(--grad-primary-2);color:#fff;font-size:10px;font-weight:800;padding:3px 10px;border-radius:9999px;box-shadow:var(--glow-primary);}
+
+/* ---- 表单 ---- */
+.form-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;box-shadow:var(--shadow);}
+.field{margin-bottom:18px;}
+.field label{display:block;font-size:13px;font-weight:700;color:var(--text);margin-bottom:7px;}
+.field label .req{color:var(--red);}
+.field label .opt{color:var(--text-placeholder);font-weight:500;font-size:11px;}
+.field input,.field select,.field textarea{width:100%;padding:10px 13px;border-radius:var(--radius-sm);border:1.5px solid var(--border);font-size:13.5px;font-family:inherit;outline:none;transition:var(--transition);background:var(--surface);}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(99,102,241,.12);}
+.field textarea{resize:vertical;line-height:1.6;}
+.field .hint{font-size:11.5px;color:var(--text-muted);margin-top:6px;}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.cat-select{display:flex;gap:8px;flex-wrap:wrap;}
+.cat-pill{padding:7px 15px;border-radius:9999px;border:1.5px solid var(--border);background:var(--surface);font-size:12.5px;font-weight:700;color:var(--text-secondary);transition:var(--transition);}
+.cat-pill:hover{border-color:var(--primary-border,#C7D2FE);}
+.cat-pill.active{background:var(--grad-primary-2);color:#fff;border-color:transparent;box-shadow:var(--glow-primary);}
+
+/* ---- 上传区 ---- */
+.dropzone{border:2px dashed var(--border-strong);border-radius:var(--radius);padding:34px 20px;text-align:center;transition:var(--transition);cursor:pointer;background:var(--surface-alt);}
+.dropzone:hover{border-color:var(--primary);background:var(--primary-light);}
+.dropzone-ic{width:48px;height:48px;border-radius:var(--radius);background:var(--primary-light);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;}
+.dropzone-ic svg{width:24px;height:24px;color:var(--primary);}
+.dropzone-title{font-weight:800;font-size:14px;}
+.dropzone-desc{font-size:12px;color:var(--text-muted);margin-top:4px;}
+.divider-or{display:flex;align-items:center;gap:12px;color:var(--text-placeholder);font-size:12px;margin:18px 0;}
+.divider-or::before,.divider-or::after{content:'';flex:1;height:1px;background:var(--border);}
+
+/* ---- 文件树 ---- */
+.file-tree{background:var(--surface-alt);border:1px solid var(--border-light);border-radius:var(--radius);padding:8px;}
+.file-node{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--radius-xs);font-size:12.5px;transition:var(--transition);}
+.file-node:hover{background:var(--surface);}
+.file-node svg{width:15px;height:15px;color:var(--text-muted);flex-shrink:0;}
+.file-node .fname{font-family:'JetBrains Mono','Fira Code',monospace;font-weight:600;}
+.file-node .ftype{margin-left:auto;font-size:10.5px;color:var(--text-placeholder);}
+.file-node .del{width:22px;height:22px;border-radius:5px;border:none;background:transparent;color:var(--text-placeholder);display:inline-flex;align-items:center;justify-content:center;transition:var(--transition);}
+.file-node .del:hover{background:var(--red-bg);color:var(--red);}
+.file-node .del svg{width:13px;height:13px;}
+.add-file{width:100%;margin-top:8px;padding:9px;border-radius:var(--radius-sm);border:1.5px dashed var(--border-strong);background:transparent;color:var(--text-muted);font-size:12.5px;font-weight:600;transition:var(--transition);display:flex;align-items:center;justify-content:center;gap:6px;}
+.add-file:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-light);}
+.add-file svg{width:14px;height:14px;}
+
+/* ---- 提示条 ---- */
+.notice{display:flex;gap:11px;padding:13px 15px;border-radius:var(--radius);font-size:12.5px;line-height:1.55;margin-bottom:18px;align-items:flex-start;}
+.notice svg{width:16px;height:16px;flex-shrink:0;margin-top:2px;}
+.notice-info{background:var(--indigo-bg);border:1px solid var(--indigo-border);color:#3730A3;}
+.notice-warn{background:var(--orange-bg);border:1px solid var(--orange-border);color:#92400E;}
+
+/* ---- 底部操作 ---- */
+.form-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:24px;align-items:center;}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:10px 18px;border-radius:var(--radius);font-size:13px;font-weight:700;border:1px solid transparent;transition:var(--transition);white-space:nowrap;text-decoration:none;}
+.btn-gradient{background:var(--grad-primary-2);color:#fff;box-shadow:var(--glow-primary);}
+.btn-gradient:hover{box-shadow:var(--glow-primary-md);transform:translateY(-1px);}
+.btn-ghost{background:var(--surface);border-color:var(--border);color:var(--text-secondary);}
+.btn-ghost:hover{border-color:var(--primary-border,#C7D2FE);color:var(--primary);}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none !important;}
+.link-back{margin-right:auto;color:var(--text-muted);text-decoration:none;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;}
+.link-back:hover{color:var(--primary);}
+.link-back svg{width:14px;height:14px;}
+
+/* ---- 预览卡片 ---- */
+.preview-card{display:flex;gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px;max-width:420px;}
+.pv-icon{width:46px;height:46px;border-radius:var(--radius);flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+.pv-icon svg{width:22px;height:22px;}
+.pv-name{font-weight:800;font-size:15px;}
+.pv-tagline{font-size:12.5px;color:var(--text-secondary);margin-top:3px;line-height:1.5;}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:20px;font-size:10.5px;font-weight:700;border:1px solid transparent;white-space:nowrap;}
+.badge-cat{background:var(--surface-alt);color:var(--text-muted);border-color:var(--border);}
+.badge-custom{background:var(--surface-alt);color:var(--text-secondary);border-color:var(--border);}
+.badge-script{background:var(--orange-bg);color:var(--orange);border-color:var(--orange-border);}
+
+/* ---- 成功页 ---- */
+.success-wrap{text-align:center;padding:60px 20px;}
+.success-ic{width:76px;height:76px;border-radius:50%;background:var(--green-bg);border:1.5px solid var(--green-border);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;}
+.success-ic svg{width:36px;height:36px;color:var(--green);}
+.success-title{font-size:22px;font-weight:800;margin-bottom:8px;}
+.success-desc{font-size:13.5px;color:var(--text-muted);margin-bottom:26px;}
+
+/* ---- Toast ---- */
+.toast{position:fixed;top:24px;left:50%;transform:translateX(-50%) translateY(-20px);background:var(--text);color:#fff;padding:12px 20px;border-radius:var(--radius);font-size:13px;font-weight:600;box-shadow:var(--shadow-lg);z-index:200;opacity:0;pointer-events:none;transition:all .3s;display:flex;align-items:center;gap:10px;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.toast svg{width:16px;height:16px;color:var(--green);}
+
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+.fade-in{animation:fadeIn .35s;}
+
+@media (max-width:1024px){
+  .sidebar{transform:translateX(-100%);transition:transform .3s;}
+  .sidebar.open{transform:translateX(0);}
+  .main{margin-left:0;}
+  .menu-btn{display:inline-flex !important;}
+}
+@media (min-width:1025px){.menu-btn{display:none;}}
+@media (max-width:640px){
+  .content{padding:16px;}
+  .entry-grid{grid-template-columns:1fr;}
+  .field-row{grid-template-columns:1fr;}
+  .step-label{display:none;}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none !important;transition:none !important;}}
+</style>
+</head>
+<body>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <div class="icon-box">灵一</div>
+    <div><div class="brand-name">AgentOne</div><div class="brand-sub">开源 AI Agent 中台</div></div>
+  </div>
+  <nav class="sidebar-nav" id="sidebarNav"></nav>
+  <div class="sidebar-footer">
+    <div class="user-avatar">王</div>
+    <div class="user-meta"><div class="user-name">王小明</div><div class="user-ws">默认工作空间</div></div>
+  </div>
+</aside>
+
+<div class="main">
+  <header class="header">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <button class="header-btn menu-btn" onclick="document.getElementById('sidebar').classList.toggle('open')" title="菜单">☰</button>
+      <div class="header-breadcrumb"><a href="index.html">构建 / Skill 中心</a> / 创建技能</div>
+    </div>
+    <div class="header-right"><button class="header-btn" title="暗色模式">🌙</button><button class="header-btn" title="帮助">?</button></div>
+  </header>
+
+  <div class="content">
+    <!-- 步骤指示 -->
+    <div class="steps" id="stepsBar">
+      <div class="step active" id="step-1"><div class="step-num">1</div><div class="step-label">选择创建方式</div></div>
+      <div class="step-line" id="line-1"></div>
+      <div class="step" id="step-2"><div class="step-num">2</div><div class="step-label">填写内容</div></div>
+      <div class="step-line" id="line-2"></div>
+      <div class="step" id="step-3"><div class="step-num">3</div><div class="step-label">预览并发布</div></div>
+    </div>
+
+    <!-- ===== Step 1：选择创建方式 ===== -->
+    <div id="view-step1">
+      <div class="page-title">创建技能</div>
+      <div class="page-desc">选择最适合的方式。业务同学推荐用模板；外包 / 已有技能用「导入技能包」；IT 同学可接入已有系统。</div>
+      <div class="entry-grid">
+        <button class="entry-card" onclick="pickEntry('template')">
+          <span class="rec-tag">业务推荐</span>
+          <div class="entry-ic" style="background:linear-gradient(135deg,#EEF2FF,#E0E7FF);color:#6366F1;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          </div>
+          <div class="entry-title">模板库</div>
+          <div class="entry-desc">按工种精选的现成模板，选中即用，改改内容就能发布。</div>
+          <div class="entry-for"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0114 0v1"/></svg>市场 / 销售 / 客服 / 人事…</div>
+        </button>
+
+        <button class="entry-card" onclick="pickEntry('blank')">
+          <div class="entry-ic" style="background:linear-gradient(135deg,#ECFDF5,#D1FAE5);color:#10B981;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>
+          </div>
+          <div class="entry-title">空白创建</div>
+          <div class="entry-desc">从零沉淀团队 SOP、规范、话术，写成内容型技能。</div>
+          <div class="entry-for"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0114 0v1"/></svg>想沉淀经验的业务同学</div>
+        </button>
+
+        <button class="entry-card" onclick="pickEntry('import')">
+          <div class="entry-ic" style="background:linear-gradient(135deg,#ECFEFF,#CFFAFE);color:#06B6D4;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><path d="M12 11v6M9 14l3 3 3-3"/></svg>
+          </div>
+          <div class="entry-title">导入技能包</div>
+          <div class="entry-desc">直接导入外包做好的技能：整个文件夹或 .zip 包，自动识别是内容型还是脚本包。</div>
+          <div class="entry-for"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>外包交付 / 文件夹 / .zip</div>
+        </button>
+
+        <button class="entry-card" onclick="pickEntry('script')">
+          <div class="entry-ic" style="background:linear-gradient(135deg,#F5F3FF,#EDE9FE);color:#8B5CF6;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
+          </div>
+          <div class="entry-title">脚本包 Scripts</div>
+          <div class="entry-desc">SKILL.md + 脚本 + 资源文件，打包成可复用技能包。</div>
+          <div class="entry-for"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0114 0v1"/></svg>有脚本资产的技术同学</div>
+        </button>
+
+        <button class="entry-card" onclick="pickEntry('api')">
+          <div class="entry-ic" style="background:linear-gradient(135deg,#FFFBEB,#FEF3C7);color:#F59E0B;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 2v6M15 2v6"/><path d="M6 8h12v4a6 6 0 01-6 6 6 6 0 01-6-6V8z"/><path d="M12 18v4"/></svg>
+          </div>
+          <div class="entry-title">API 接入</div>
+          <div class="entry-desc">把已有 REST API 封装成技能，结构化表单配置。</div>
+          <div class="entry-for"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0114 0v1"/></svg>IT / 集成同学</div>
+        </button>
+      </div>
+    </div>
+
+    <!-- ===== Step 2：填写内容（按入口渲染）===== -->
+    <div id="view-step2" style="display:none;">
+      <div id="formArea"></div>
+      <div class="form-actions">
+        <a class="link-back" href="#" onclick="backToStep1();return false;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg> 重新选择
+        </a>
+        <button class="btn btn-ghost" onclick="backToStep1()">上一步</button>
+        <button class="btn btn-gradient" onclick="goPreview()">下一步：预览
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- ===== Step 3：预览并发布 ===== -->
+    <div id="view-step3" style="display:none;">
+      <div class="page-title">预览并发布</div>
+      <div class="page-desc">确认技能信息无误后发布，发布后 Agent 即可绑定使用。</div>
+      <div class="form-card">
+        <div style="font-size:13px;font-weight:800;color:var(--text-muted);letter-spacing:.5px;margin-bottom:14px;">技能卡片预览</div>
+        <div id="previewCard"></div>
+        <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border-light);">
+          <div style="font-size:13px;font-weight:800;color:var(--text-muted);letter-spacing:.5px;margin-bottom:12px;">技能正文</div>
+          <div id="previewBody" style="background:var(--surface-alt);border:1px solid var(--border-light);border-radius:var(--radius);padding:16px;font-size:12.5px;line-height:1.7;color:var(--text-secondary);white-space:pre-wrap;max-height:240px;overflow:auto;"></div>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-ghost" onclick="showStep(2)">上一步</button>
+        <button class="btn btn-gradient" onclick="doPublish()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg> 发布技能
+        </button>
+      </div>
+    </div>
+
+    <!-- ===== 发布成功 ===== -->
+    <div id="view-success" style="display:none;">
+      <div class="success-wrap fade-in">
+        <div class="success-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg></div>
+        <div class="success-title">技能发布成功</div>
+        <div class="success-desc">「<span id="pubName"></span>」已加入技能库，现在可以到 Agent 详情页绑定使用。</div>
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+          <a class="btn btn-ghost" href="index.html#mine">查看我的技能</a>
+          <a class="btn btn-gradient" href="index.html">去广场看看</a>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- 隐藏的导入输入：文件夹（真实）/ .zip · 单文件（演示解析） -->
+<input type="file" id="folderInput" webkitdirectory directory multiple style="display:none" onchange="onFolderImport(this)">
+<input type="file" id="fileInput" accept=".zip,.md,.markdown,.txt" style="display:none" onchange="onFileImport(this)">
+
+<div class="toast" id="toast">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+  <span id="toastText"></span>
+</div>
+
+<script>
+const ICONS = {
+  write:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>',
+  doc:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/></svg>',
+  code:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>',
+  file:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><path d="M13 2v7h7"/></svg>',
+  folder:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>',
+  plug:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 2v6M15 2v6"/><path d="M6 8h12v4a6 6 0 01-6 6 6 6 0 01-6-6V8z"/><path d="M12 18v4"/></svg>',
+};
+const NAV=[
+  {section:'概览',items:[{label:'工作台',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>'}]},
+  {section:'构建',items:[
+    {label:'Agent 管理',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="9" r="3"/><circle cx="8" cy="16" r="2"/><circle cx="16" cy="16" r="2"/><path d="M12 12v2M9.2 14.5l3 3M14.8 14.5l-3 3"/></svg>'},
+    {label:'知识库',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>'},
+    {label:'Skill 中心',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>',active:true},
+    {label:'MCP 集成',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 2v6M15 2v6"/><path d="M6 8h12v4a6 6 0 01-6 6 6 6 0 01-6-6V8z"/><path d="M12 18v4"/></svg>'},
+  ]},
+  {section:'接入',items:[
+    {label:'模型管理',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><circle cx="6" cy="6" r="1" fill="currentColor"/><circle cx="6" cy="18" r="1" fill="currentColor"/></svg>'},
+    {label:'API Key',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>'},
+  ]},
+  {section:'管理',items:[{label:'工作空间',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>'}]},
+];
+document.getElementById('sidebarNav').innerHTML = NAV.map(g=>`
+  <div class="nav-section-label">${g.section}</div>
+  ${g.items.map(it=>`<button class="nav-item ${it.active?'active':''}" ${it.active?'':'onclick="showToast(\'原型演示：仅创建流程可交互\')"'}>
+    <span class="nav-icon">${it.icon}</span><span class="nav-label">${it.label}</span></button>`).join('')}
+`).join('');
+
+const CATS=['市场','销售','客服','人事','财务','法务合规','行政','数据分析','IT 集成','其他'];
+
+/* 模板库数据 */
+const TEMPLATES=[
+  {cat:'市场',name:'小红书种草文案',desc:'按爆款结构生成种草文案'},
+  {cat:'市场',name:'活动策划方案',desc:'按 5W2H 输出活动框架'},
+  {cat:'销售',name:'客户跟进邮件',desc:'按客户阶段写跟进邮件'},
+  {cat:'销售',name:'竞品对比分析',desc:'结构化输出竞品对比'},
+  {cat:'客服',name:'客诉处理 SOP',desc:'安抚-定级-升级-回访'},
+  {cat:'客服',name:'常见问题话术',desc:'高频问题标准答复'},
+  {cat:'人事',name:'招聘 JD 生成',desc:'标准结构 + 规避歧视表述'},
+  {cat:'人事',name:'面试题设计',desc:'按岗位能力模型出题'},
+  {cat:'财务',name:'报销政策问答',desc:'报销标准与凭证要求'},
+  {cat:'财务',name:'发票审核清单',desc:'发票合规逐项核查'},
+  {cat:'法务合规',name:'合同审查清单',desc:'38 项风险点核查'},
+  {cat:'行政',name:'会议纪要生成',desc:'要点-决议-待办三段式'},
+  {cat:'行政',name:'周报生成助手',desc:'四段式周报整理'},
+  {cat:'数据分析',name:'数据周报框架',desc:'指标-异动-归因-建议'},
+];
+
+let entry=null;
+let selectedCat='市场';
+let scriptFiles=[{name:'SKILL.md',type:'说明',icon:'doc'}];
+
+function pickEntry(e){
+  entry=e;
+  showStep(2);
+  renderForm();
+}
+function backToStep1(){ showStep(1); }
+
+function showStep(n){
+  ['view-step1','view-step2','view-step3','view-success'].forEach((id,i)=>{
+    document.getElementById(id).style.display='none';
+  });
+  if(n===1) document.getElementById('view-step1').style.display='';
+  if(n===2) document.getElementById('view-step2').style.display='';
+  if(n===3) document.getElementById('view-step3').style.display='';
+  if(n===4) document.getElementById('view-success').style.display='';
+  for(let i=1;i<=3;i++){
+    const el=document.getElementById('step-'+i);
+    el.classList.remove('active','done');
+    if(n>i) el.classList.add('done');
+    else if(n===i) el.classList.add('active');
+    if(el.classList.contains('done')) el.querySelector('.step-num').textContent='✓';
+    else el.querySelector('.step-num').textContent=i;
+  }
+  document.getElementById('line-1').classList.toggle('done',n>1);
+  document.getElementById('line-2').classList.toggle('done',n>2);
+  window.scrollTo({top:0});
+}
+
+/* 工种选择器 */
+function catPills(){
+  return `<div class="cat-select">${CATS.map(c=>`
+    <button type="button" class="cat-pill ${selectedCat===c?'active':''}" onclick="setCat('${c}')">${c}</button>`).join('')}</div>`;
+}
+function setCat(c){
+  selectedCat=c;
+  document.querySelectorAll('.cat-pill').forEach(p=>p.classList.toggle('active',p.textContent.trim()===c));
+}
+function baseFields(){
+  return `
+  <div class="field"><label>技能名称 <span class="req">*</span></label>
+    <input id="f-name" placeholder="如：客户跟进邮件" value=""></div>
+  <div class="field"><label>一句话简介 <span class="req">*</span></label>
+    <input id="f-tagline" placeholder="这个技能能帮谁解决什么问题" ></div>
+  <div class="field"><label>所属工种 <span class="req">*</span></label>${catPills()}</div>`;
+}
+function bodyField(){
+  return `<div class="field"><label>技能正文（Markdown）<span class="req">*</span></label>
+    <textarea id="f-body" rows="10" placeholder="把 SOP、规范、话术、方法论写在这里。Agent 调用技能时会按此执行…"></textarea>
+    <div class="hint">支持 Markdown。写得越具体，Agent 执行得越准。</div></div>`;
+}
+
+function renderForm(){
+  const area=document.getElementById('formArea');
+  if(entry==='template'){
+    area.innerHTML=`<div class="page-title">从模板创建</div>
+      <div class="page-desc">选择一个模板，系统会预填内容骨架，你可继续修改。</div>
+      <div class="form-card">
+        ${baseFields()}
+        <div class="field"><label>选择模板 <span class="req">*</span></label>
+          <select id="f-template" onchange="applyTemplate()">
+            <option value="">— 请选择 —</option>
+            ${TEMPLATES.map((t,i)=>`<option value="${i}">[${t.cat}] ${t.name} · ${t.desc}</option>`).join('')}
+          </select>
+        </div>
+        ${bodyField()}
+      </div>`;
+  } else if(entry==='blank'){
+    area.innerHTML=`<div class="page-title">空白创建</div>
+      <div class="page-desc">把团队经验、SOP、规范写成内容型技能。</div>
+      <div class="form-card">${baseFields()}${bodyField()}</div>`;
+  } else if(entry==='import'){
+    importIsScript=false; importedFiles=[];
+    area.innerHTML=`<div class="page-title">导入技能包</div>
+      <div class="page-desc">导入外包或已有的技能成品。支持整个文件夹、.zip 压缩包或单个 SKILL.md，系统自动识别是内容型还是脚本包。</div>
+      <div class="form-card">
+        <div class="notice notice-info">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <span>外包交付的技能通常是一个文件夹（SKILL.md + scripts/ + resources/）或 .zip 包，直接导入即可，系统自动解析名称、简介与文件结构。</span>
+        </div>
+        <div class="field"><label>导入方式 <span class="req">*</span></label>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button class="btn btn-gradient" type="button" onclick="document.getElementById('folderInput').click()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg> 选择技能文件夹
+            </button>
+            <button class="btn btn-ghost" type="button" onclick="document.getElementById('fileInput').click()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg> 上传 .zip / 单文件
+            </button>
+            <button class="btn btn-ghost" type="button" onclick="loadSamplePackage()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> 载入示例技能包
+            </button>
+          </div>
+          <div class="hint">「选择技能文件夹」为真实导入；.zip 解析与示例为演示。</div>
+        </div>
+        <div class="divider-or">或直接粘贴 SKILL.md 内容</div>
+        <div class="field">
+          <textarea id="f-paste" rows="6" placeholder="---\nname: 客户跟进邮件\ndescription: 按客户阶段写跟进邮件\n---\n\n# 客户跟进邮件\n…"></textarea>
+          <div style="margin-top:10px;">
+            <button class="btn btn-ghost" type="button" onclick="parseImport()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> 解析粘贴内容
+            </button>
+          </div>
+        </div>
+        <div id="importParsed" style="margin-top:18px;display:none;">
+          <div id="importDetect"></div>
+          <div id="importTree"></div>
+          ${baseFields()}${bodyField()}
+        </div>
+      </div>`;
+  } else if(entry==='script'){
+    area.innerHTML=`<div class="page-title">脚本包 Scripts</div>
+      <div class="page-desc">按 SKILL.md + scripts + resources 组织技能包，把可复用的脚本与方法论一起沉淀。</div>
+      <div class="form-card">
+        <div class="notice notice-warn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.7 3.86a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+          <span><strong>脚本暂不执行：</strong>出于安全考虑，脚本文件本期仅随包存储与分发，服务端执行将在沙箱能力上线后开放。Agent 可读取 SKILL.md 与资源内容作为执行依据。</span>
+        </div>
+        ${baseFields()}
+        ${bodyField()}
+        <div class="field"><label>技能包文件</label>
+          <div class="file-tree" id="fileTree"></div>
+          <button class="add-file" type="button" onclick="addScriptFile()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> 添加脚本 / 资源文件（演示）
+          </button>
+        </div>
+      </div>`;
+    renderFileTree();
+  } else if(entry==='api'){
+    area.innerHTML=`<div class="page-title">API 接入</div>
+      <div class="page-desc">把已有 REST API 封装成技能。面向 IT / 集成场景，内置 SSRF 防护。</div>
+      <div class="form-card">
+        ${baseFields()}
+        <div class="field-row">
+          <div class="field"><label>请求地址 URL <span class="req">*</span></label>
+            <input id="f-url" placeholder="https://api.example.com/v1/query">
+            <div class="hint">仅允许 http/https，拒绝内网地址（SSRF 防护）。</div></div>
+          <div class="field"><label>请求方法</label>
+            <select id="f-method"><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>超时时间（毫秒）</label><input id="f-timeout" value="5000"></div>
+          <div class="field"><label>鉴权方式</label>
+            <select id="f-auth"><option>无</option><option>API Key（Header）</option><option>API Key（Query）</option><option>Bearer Token</option></select></div>
+        </div>
+        <div class="field"><label>入参定义</label>
+          <div class="hint" style="margin-bottom:8px;">定义 Agent 调用时可传入的参数，将生成 JSON Schema。</div>
+          <div id="paramRows"></div>
+          <button class="add-file" type="button" onclick="addParamRow()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> 添加参数
+          </button>
+        </div>
+        <div class="notice notice-info" style="margin-top:4px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <span>需要粘贴 OpenAPI / Swagger 定义？导入解析能力规划中，当前可先用结构化表单逐项配置。</span>
+        </div>
+      </div>`;
+    addParamRow();
+  }
+}
+
+/* 模板应用 */
+function applyTemplate(){
+  const sel=document.getElementById('f-template');
+  if(!sel||sel.value==='')return;
+  const t=TEMPLATES[parseInt(sel.value)];
+  document.getElementById('f-name').value=t.name;
+  document.getElementById('f-tagline').value=t.desc;
+  selectedCat=t.cat;
+  const body=document.getElementById('f-body');
+  body.value=`# ${t.name}\n\n## 目标\n${t.desc}\n\n## 执行步骤\n1. \n2. \n3. \n\n## 输出规范\n- \n\n## 注意事项\n- `;
+  renderFormKeepValues(t);
+  showToast('已应用模板「'+t.name+'」');
+}
+function renderFormKeepValues(t){
+  // 仅刷新工种选中态，保留已填值
+  const name=document.getElementById('f-name').value;
+  const tag=document.getElementById('f-tagline').value;
+  const tpl=document.getElementById('f-template').value;
+  const body=document.getElementById('f-body').value;
+  renderForm();
+  document.getElementById('f-name').value=name;
+  document.getElementById('f-tagline').value=tag;
+  const sel=document.getElementById('f-template'); if(sel)sel.value=tpl;
+  document.getElementById('f-body').value=body;
+}
+
+/* 导入技能包：文件夹 / .zip / 单文件 / 粘贴，自动识别内容型 vs 脚本包 */
+let importIsScript=false;
+let importedFiles=[];
+
+function fileType(name){
+  if(/(^|\/)skill\.md$/i.test(name)) return '说明 · 必需';
+  if(/\.(py|js|ts|sh|rb|go|php)$/i.test(name)||/(^|\/)scripts\//i.test(name)) return '脚本';
+  if(/\.md$/i.test(name)) return '文档';
+  return '资源';
+}
+function fileIcon(name){
+  if(/\.(py|js|ts|sh|rb|go|php)$/i.test(name)||/(^|\/)scripts\//i.test(name)) return ICONS.code;
+  if(/\.md$/i.test(name)) return ICONS.doc;
+  return ICONS.file;
+}
+function parseFrontmatter(text){
+  let name='',desc='',body=text||'';
+  const m=(text||'').match(/^---\n([\s\S]*?)\n---\n?/);
+  if(m){
+    body=(text||'').slice(m[0].length);
+    const nm=m[1].match(/name:\s*(.+)/); if(nm)name=nm[1].trim();
+    const dm=m[1].match(/description:\s*(.+)/); if(dm)desc=dm[1].trim();
+  } else {
+    const first=(text||'').split('\n').find(l=>l.trim());
+    name=(first||'').replace(/^#+\s*/,'');
+  }
+  return {name:name,desc:desc,body:body};
+}
+function detectAndRender(files, skillMdText){
+  importedFiles=files;
+  const extra=files.filter(f=>!/(^|\/)skill\.md$/i.test(f.name));
+  importIsScript=extra.length>0;
+  const parsed=parseFrontmatter(skillMdText);
+  const infoIc='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>';
+  const warnIc='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.7 3.86a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>';
+  let detect='';
+  if(importIsScript){
+    detect+='<div class="notice notice-info">'+infoIc+'<span>已识别为 <strong>脚本包技能</strong>：SKILL.md + '+extra.length+' 个脚本 / 资源文件。</span></div>';
+    detect+='<div class="notice notice-warn">'+warnIc+'<span><strong>脚本暂不执行：</strong>导入的脚本本期仅随包存储与分发，服务端执行将在沙箱能力上线后开放。</span></div>';
+  } else {
+    detect+='<div class="notice notice-info">'+infoIc+'<span>已识别为 <strong>内容型技能</strong>：仅含 SKILL.md，无脚本与资源。</span></div>';
+  }
+  document.getElementById('importDetect').innerHTML=detect;
+  const tree=document.getElementById('importTree');
+  tree.innerHTML=importIsScript
+    ? '<div class="field"><label>技能包文件结构（'+files.length+' 个文件）</label><div class="file-tree">'
+      + files.map(f=>'<div class="file-node"><span style="display:inline-flex;width:15px;height:15px;">'+fileIcon(f.name)+'</span><span class="fname">'+f.name+'</span><span class="ftype">'+f.type+'</span></div>').join('')
+      + '</div></div>'
+    : '';
+  document.getElementById('importParsed').style.display='';
+  setTimeout(()=>{
+    document.getElementById('f-name').value=parsed.name;
+    document.getElementById('f-tagline').value=parsed.desc;
+    document.getElementById('f-body').value=parsed.body.trim();
+  },0);
+}
+function onFolderImport(input){
+  const files=Array.from(input.files||[]);
+  if(!files.length) return;
+  const skillFile=files.find(f=>/(^|\/)skill\.md$/i.test(f.name))||files.find(f=>/\.md$/i.test(f.name));
+  if(!skillFile){ showToast('未找到 SKILL.md，请确认技能包结构'); return; }
+  const reader=new FileReader();
+  reader.onload=function(){
+    const list=files.map(f=>{
+      const rel=f.webkitRelativePath?f.webkitRelativePath.split('/').slice(1).join('/'):f.name;
+      const nm=rel||f.name;
+      return {name:nm,type:fileType(nm)};
+    }).sort((a,b)=>a.name.localeCompare(b.name));
+    detectAndRender(list, reader.result);
+    const pkg=(skillFile.webkitRelativePath||'').split('/')[0]||'技能包';
+    showToast('已导入「'+pkg+'」，共 '+files.length+' 个文件');
+  };
+  reader.readAsText(skillFile);
+  input.value='';
+}
+function onFileImport(input){
+  const f=input.files&&input.files[0];
+  if(!f) return;
+  if(/\.md$/i.test(f.name)){
+    const reader=new FileReader();
+    reader.onload=function(){ detectAndRender([{name:'SKILL.md',type:'说明 · 必需'}], reader.result); showToast('已导入 '+f.name); };
+    reader.readAsText(f);
+  } else {
+    loadSamplePackage();
+    showToast('已解析压缩包（演示），识别出技能包结构');
+  }
+  input.value='';
+}
+function loadSamplePackage(){
+  const files=[
+    {name:'SKILL.md',type:'说明 · 必需'},
+    {name:'scripts/scan_clauses.py',type:'脚本'},
+    {name:'references/risk_rules.md',type:'参考'},
+  ];
+  const md='---\nname: 合同风险初审\ndescription: 按 38 项风险规则扫描合同条款，输出风险清单与修改建议\n---\n\n# 合同风险初审\n\n## 目标\n对合同文本做风险初审，定位高风险条款。\n\n## 执行步骤\n1. 调用 scripts/scan_clauses.py 提取合同条款\n2. 对照 references/risk_rules.md 逐项核查\n3. 输出风险清单（高/中/低）与修改建议\n\n## 注意事项\n- 初审结果不替代法务复核';
+  detectAndRender(files, md);
+}
+function parseImport(){
+  const raw=document.getElementById('f-paste').value.trim();
+  if(!raw){ showToast('请先粘贴内容'); return; }
+  detectAndRender([{name:'SKILL.md',type:'说明 · 必需'}], raw);
+  showToast('解析成功');
+}
+
+/* 脚本文件树 */
+function renderFileTree(){
+  const tree=document.getElementById('fileTree'); if(!tree)return;
+  tree.innerHTML=scriptFiles.map((f,i)=>`
+    <div class="file-node">
+      <span style="display:inline-flex;width:15px;height:15px;">${ICONS[f.icon]||ICONS.file}</span>
+      <span class="fname">${f.name}</span><span class="ftype">${f.type}</span>
+      ${i>0?`<button class="del" onclick="scriptFiles.splice(${i},1);renderFileTree()" title="移除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>`:'<span class="ftype" style="color:var(--green);">必需</span>'}
+    </div>`).join('');
+}
+function addScriptFile(){
+  const samples=[{name:'scripts/analyze.py',type:'脚本',icon:'code'},{name:'scripts/format.js',type:'脚本',icon:'code'},{name:'references/template.md',type:'模板',icon:'file'},{name:'references/rules.md',type:'参考',icon:'doc'}];
+  const next=samples.find(s=>!scriptFiles.some(f=>f.name===s.name))||{name:'scripts/new_'+scriptFiles.length+'.py',type:'脚本',icon:'code'};
+  scriptFiles.push(next); renderFileTree();
+  showToast('已添加 '+next.name);
+}
+
+/* API 参数行 */
+let paramCount=0;
+function addParamRow(){
+  const wrap=document.getElementById('paramRows'); if(!wrap)return;
+  paramCount++;
+  const div=document.createElement('div');
+  div.style.cssText='display:grid;grid-template-columns:1fr 120px 1.4fr 60px 34px;gap:8px;margin-bottom:8px;align-items:center;';
+  div.innerHTML=`
+    <input placeholder="参数名 如 keyword" style="width:100%;padding:8px 11px;border-radius:var(--radius-sm);border:1.5px solid var(--border);font-size:12.5px;outline:none;">
+    <select style="width:100%;padding:8px;border-radius:var(--radius-sm);border:1.5px solid var(--border);font-size:12.5px;"><option>string</option><option>number</option><option>boolean</option></select>
+    <input placeholder="参数描述" style="width:100%;padding:8px 11px;border-radius:var(--radius-sm);border:1.5px solid var(--border);font-size:12.5px;outline:none;">
+    <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-muted);white-space:nowrap;"><input type="checkbox" checked> 必填</label>
+    <button class="del" style="width:30px;height:30px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);display:inline-flex;align-items:center;justify-content:center;" onclick="this.parentElement.remove()" title="删除"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>`;
+  wrap.appendChild(div);
+}
+
+/* 预览与发布 */
+function collect(){
+  const g=id=>{const el=document.getElementById(id);return el?(el.value||'').trim():'';};
+  return {
+    name:g('f-name')||'未命名技能',
+    tagline:g('f-tagline')||'（暂无简介）',
+    cat:selectedCat,
+    body:g('f-body')||'（暂无正文）',
+    entry:entry,
+  };
+}
+function goPreview(){
+  const d=collect();
+  if(!document.getElementById('f-name')||!d.name||d.name==='未命名技能'){
+    showToast('请填写技能名称');return;
+  }
+  const isScript=entry==='script'||(entry==='import'&&importIsScript);
+  const tile={市场:'#F59E0B',销售:'#3B82F6',客服:'#06B6D4',人事:'#6366F1',财务:'#10B981',法务合规:'#8B5CF6',行政:'#10B981',数据分析:'#3B82F6','IT 集成':'#F59E0B',其他:'#64748B'}[d.cat]||'#6366F1';
+  document.getElementById('previewCard').innerHTML=`
+    <div class="preview-card fade-in">
+      <div class="pv-icon" style="background:${tile}22;color:${tile};">${entry==='api'?ICONS.plug:(isScript?ICONS.code:ICONS.write)}</div>
+      <div>
+        <div class="pv-name">${d.name}</div>
+        <div class="pv-tagline">${d.tagline}</div>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+          <span class="badge badge-cat">${d.cat}</span>
+          <span class="badge badge-custom">自建</span>
+          ${isScript?'<span class="badge badge-script">脚本包</span>':''}
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('previewBody').textContent=d.body;
+  showStep(3);
+}
+function doPublish(){
+  const d=collect();
+  document.getElementById('pubName').textContent=d.name;
+  showStep(4);
+}
+
+/* Toast */
+let toastTimer;
+function showToast(msg){
+  const t=document.getElementById('toast');
+  document.getElementById('toastText').textContent=msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),2400);
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')backToStep1();});
+</script>
+</body>
+</html>

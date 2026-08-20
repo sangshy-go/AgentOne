@@ -154,20 +154,27 @@ JWT 中携带 `userId` 与 `workspaceId`，切换工作空间后 Cookie 重新�
 
 ## 9. Skill `/api/skills`（Cookie）
 
-Skill 列表为**合并视图**：内置（builtin，虚拟挂载）+ API 模式（落 `skill` 表）+ MCP 工具（`mcp-{serverId}-{toolName}` 虚拟 ID，见 §10）。
+Skill 列表为**合并视图**：内置（builtin，虚拟挂载）+ 用户 Skill（api / prompt，落 `skill` 表）+ MCP 工具（`mcp-{serverId}-{toolName}` 虚拟 ID，见 §10）。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/skills?page&size` | 工作空间 Skill 分页列表（builtin/api/mcp 合并，含 type/source） |
-| POST | `/api/skills` | 创建 API 模式 Skill（SkillDTO：`{name*, description?, inputSchema?, outputSchema?, config*, version?}`；config 为 JSON 字符串，须含 `url`，过 SSRF 校验） |
-| PUT | `/api/skills/{skillId}` | 更新 API 模式 Skill（内置不可改，5006） |
+| GET | `/api/skills?page&size&keyword&category&type` | 工作空间 Skill 分页列表（**管理视角**，builtin/api/prompt/mcp 合并，含 type/source/category）；keyword 名称/描述大小写不敏感，category/type 精确筛选 |
+| GET | `/api/skills/plaza?q&cat` | 技能广场（**发现视角**，Skill 中心 v2）：本空间 active 用户 Skill + builtin + **已发布**的 MCP 工具；q 搜索、cat 按工种过滤；不分页 |
+| POST | `/api/skills` | 创建用户 Skill（SkillDTO：`{name*, type?, category?, description?, inputSchema?, outputSchema?, config*, version?}`；type 缺省 `api`，可选 `prompt`；category 缺省"其他"。api：config 须含 `url` 过 SSRF 校验；prompt：config 须含非空 `content`（`{"content":"..."}`），无出站请求，inputSchema/outputSchema 强制 `{}`。config 可带 `actionType:true` 标记动作型） |
+| PUT | `/api/skills/{skillId}` | 更新用户 Skill（内置不可改 5006；禁止 type 变更 5007） |
 | DELETE | `/api/skills/{skillId}` | 删除（仍被 Agent 绑定拒绝，5005） |
-| POST | `/api/skills/{skillId}/test` | 测试调用 `{params:{...}}` → 真实执行结果（builtin 不支持，5006） |
+| POST | `/api/skills/{skillId}/test` | 测试调用 `{params:{...}}` → 真实执行结果（builtin 不支持，5006）；prompt 类型返回 `data:{name, content}` |
+| GET | `/api/skills/{skillId}/export` | 导出 Skill 定义 JSON（format=agentone-skill，含全字段 + exportedAt；仅用户 Skill，builtin/mcp 拒绝 5006） |
+| POST | `/api/skills/import` | 导入 Skill 定义（body 为导出 JSON；外来 format 5007；同名+同 type 已存在 5013；成功 source=imported，走与创建相同的校验链路） |
+| POST | `/api/skills/import-package` | 导入技能包（multipart，Skill 中心 v2）：`file`=单个 `.zip` 或单个 `.md`；`files[]`+`paths[]`=整个文件夹（两者数量须一致）。以 `SKILL.md` 为入口，frontmatter 带出 name/description/category；落 `skill` + `skill_package_file`（脚本仅存储不执行）；同名 5013，包非法 5014 |
+| GET | `/api/skills/{skillId}/package-files` | 技能包文件树（详情抽屉展示 SKILL.md + scripts + resources）→ `[{path, kind(script/resource/doc), size, content?}]` |
+| PUT | `/api/skills/{skillId}/status?enabled=` | 启用/停用（我的技能 toggle）：用户 Skill 切换 active/disabled；MCP 工具等价切换发布状态；内置技能系统托管拒绝（5006） |
+| POST | `/api/skills/{skillId}/invoke` | 广场「试一试」`{params?, confirmToken?}`。**动作型两阶段**：首次（无 token）返回 `confirmRequired=true + confirmToken + draftParams`，不执行；带有效 token 二次调用才真实执行。非动作型直接执行。写审计（agentId=plaza）；令牌无效/过期 5015 |
 | GET | `/api/skills/debug/targets` | 调试器第 1 步：可调试 Skill 列表（含 inputSchema） |
 | POST | `/api/skills/debug/preview` | 调试器第 2 步：参数预检 + 执行计划 `{skillId*, params}` → `{valid, errors, plan}`（不发起真实调用） |
 | POST | `/api/skills/debug/run` | 调试器第 3 步：真实执行 `{skillId*, params, sessionId?}` → `{success, data, errorMessage, durationMs, traceId, sessionId}`（写审计，agentId=debugger） |
 | GET | `/api/skills/bindings/{agentId}` | Agent 的 Skill 绑定 |
-| POST | `/api/skills/bind` | 绑定 `{agentId, skillId, config?}`（skillId 可为 builtin/api/mcp 任意形态） |
+| POST | `/api/skills/bind` | 绑定 `{agentId, skillId, config?}`（skillId 可为 builtin/api/prompt/mcp 任意形态；未发布的 MCP 工具拒绝 5016） |
 | DELETE | `/api/skills/bindings/{bindingId}` | 解绑 |
 | PUT | `/api/skills/bindings/{bindingId}/toggle?enabled=` | 启用/停用 |
 
@@ -182,7 +189,8 @@ Skill 列表为**合并视图**：内置（builtin，虚拟挂载）+ API 模式
 | GET | `/api/mcp-servers/{id}` | 详情 |
 | POST | `/api/mcp-servers/{id}/connect` | 连接并发现工具 → `List<McpToolVO>`（工具注册为虚拟 Skill） |
 | POST | `/api/mcp-servers/{id}/disconnect` | 断开（保留配置与 Server 行） |
-| GET | `/api/mcp-servers/{id}/tools` | 已发现的工具列表（skillId / toolName / description / inputSchema） |
+| GET | `/api/mcp-servers/{id}/tools` | 已发现的工具列表（skillId / toolName / description / inputSchema / `published` / `actionType`） |
+| PUT | `/api/mcp-servers/{id}/tools/{toolName}/publish` | 工具级「发布到广场」开关（Skill 中心 v2 治理，body `{published}`；默认关闭，IT 显式发布后广场才可见/可绑定） |
 
 > MCP 的 url/command 不做 SSRF 拦截（stdio 即本地命令执行能力，管理员配置行为），信任边界与 API Skill 不同，详见 docs/technical/06-mcp-integration.md §6。
 
@@ -232,13 +240,17 @@ Skill 列表为**合并视图**：内置（builtin，虚拟挂载）+ API 模式
 | 5003 | Skill 绑定记录不存在 |
 | 5004 | 无权操作其他工作空间的 Skill（绑定 / 测试 / 调试） |
 | 5005 | 该 Skill 仍被 Agent 绑定，请先解除绑定（删除保护） |
-| 5006 | 该 Skill 不支持直接测试 / 内置 Skill 不可修改 |
-| 5007 | Skill 配置非法（不是合法 JSON / 缺少 url） |
+| 5006 | 该 Skill 不支持直接测试 / 内置 Skill 不可修改 / 不可导出 |
+| 5007 | Skill 配置非法（不是合法 JSON / api 缺 url / prompt 缺 content / 未知 type / 变更 type / 导入外来格式） |
 | 5008 | Skill 地址不安全（SSRF 拦截） |
 | 5009 | MCP Server 不存在（含跨空间访问） |
 | 5010 | MCP 配置非法（transport 枚举 / 缺 command / 缺 url） |
 | 5011 | MCP 连接失败 / 工具发现失败（携带根因消息） |
 | 5012 | MCP Server 的工具仍被 Agent 绑定，拒绝删除 |
+| 5013 | 导入 Skill 时同空间已存在同名+同 type 的 Skill，请先删除或改名 |
+| 5014 | 技能包非法（缺 SKILL.md / frontmatter 无 name / zip 解析失败 / 路径非法 zip-slip / 超大小或数量上限 / files 与 paths 数量不一致） |
+| 5015 | 动作型技能确认令牌无效或已过期（请重新生成草稿并确认） |
+| 5016 | 该 MCP 工具未发布到广场，请先在 MCP 管理中发布（绑定拦截） |
 | 6001 | 知识库不存在 / 模型供应商不存在 |
 | 6002 | 模型不存在 / Chat 模型不存在 |
 | 6003 | 文档不存在 |
