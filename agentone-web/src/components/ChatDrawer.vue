@@ -319,6 +319,10 @@ async function loadMessages(sessionId: string) {
 }
 
 function handleNewSession() {
+  // 正在流式时先中断在途 SSE，否则旧会话的回复会串入新会话消息列表
+  if (streaming.value) {
+    stopStreaming()
+  }
   currentSessionId.value = null
   messages.value = []
   inputMessage.value = ''
@@ -326,6 +330,10 @@ function handleNewSession() {
 }
 
 function handleSelectSession(sessionId: string) {
+  // 正在流式且切换到不同会话时，先中断在途 SSE，避免旧会话内容污染新会话
+  if (streaming.value && sessionId !== currentSessionId.value) {
+    stopStreaming()
+  }
   currentSessionId.value = sessionId
 }
 

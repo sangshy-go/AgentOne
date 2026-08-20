@@ -7,13 +7,16 @@
       <div class="section-title">基本信息</div>
       <n-form label-placement="left" label-width="120" style="max-width: 600px;">
         <n-form-item label="工作空间名称">
-          <n-input placeholder="输入工作空间名称" />
+          <n-input v-model:value="wsName" placeholder="输入工作空间名称" />
         </n-form-item>
         <n-form-item label="描述">
-          <n-input type="textarea" placeholder="输入工作空间描述" :rows="3" />
+          <n-input v-model:value="wsDesc" type="textarea" placeholder="输入工作空间描述" :rows="3" />
         </n-form-item>
         <n-form-item>
-          <button class="btn-gradient">保存</button>
+          <button class="btn-gradient" disabled title="功能即将上线" @click="onSave">
+            {{ saving ? '保存中...' : '保存' }}
+          </button>
+          <span class="coming-soon">功能即将上线</span>
         </n-form-item>
       </n-form>
     </div>
@@ -34,7 +37,18 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import { NForm, NFormItem, NInput } from 'naive-ui'
+
+// 受控表单：设置接口尚未开放，保存按钮禁用并提示「功能即将上线」
+const wsName = ref('')
+const wsDesc = ref('')
+const saving = ref(false)
+
+function onSave() {
+  // 后端暂未提供工作空间设置更新接口，禁用保存（见模板中 disabled）
+  saving.value = false
+}
 </script>
 
 <style scoped>
@@ -45,5 +59,12 @@ import { NForm, NFormItem, NInput } from 'naive-ui'
 .empty-hint {
   text-align: center;
   padding: 40px 24px;
+}
+
+.coming-soon {
+  margin-left: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
 }
 </style>

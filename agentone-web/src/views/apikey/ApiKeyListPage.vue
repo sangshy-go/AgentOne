@@ -158,8 +158,38 @@ async function handleDisable(row: ApiKey) {
 function copyKey() {
   navigator.clipboard?.writeText(createdKey.value).then(
     () => message.success('已复制'),
-    () => message.error('复制失败'),
+    () => fallbackCopy(createdKey.value),
   )
+}
+
+/** 非安全上下文（无 navigator.clipboard）时的降级复制 */
+function fallbackCopy(text: string) {
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(ta)
+    if (ok) {
+      message.success('已复制')
+      return
+    }
+  } catch {
+    /* ignore */
+  }
+  message.error('复制失败，请手动复制')
+}
+
+/** 将 ISO 时间格式化为 YYYY-MM-DD HH:mm */
+function formatDate(v: string | null | undefined): string {
+  if (!v) return '—'
+  const d = new Date(v)
+  if (Number.isNaN(d.getTime())) return String(v)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 const columns: DataTableColumns<ApiKey> = [
@@ -171,7 +201,9 @@ const columns: DataTableColumns<ApiKey> = [
     return h(NTag, { type: row.status === 'active' ? 'success' : 'error', size: 'small', round: true }, () => row.status)
   }},
   { title: '每日上限', key: 'dailyLimit' },
-  { title: '创建时间', key: 'createdAt' },
+  { title: '创建时间', key: 'createdAt', render(row) {
+    return formatDate(row.createdAt)
+  } },
   { title: '操作', key: 'actions', render(row) {
     if (row.status !== 'active') return h('span', { style: 'color: var(--text-muted)' }, '已停用')
     return h(NPopconfirm, {

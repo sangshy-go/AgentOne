@@ -184,10 +184,25 @@
               尚未发现工具。请先连接该 Server；连接成功后工具会自动注册为虚拟 Skill。
             </div>
             <div v-else class="tool-list">
-              <div v-for="t in tools" :key="t.skillId" class="tool-item">
+              <p class="tools-hint">
+                工具默认仅可被 Agent 绑定调试，不会出现在技能广场。打开「发布」后才会对广场可见、可被普通用户试用。
+              </p>
+              <div v-for="t in tools" :key="t.skillId" class="tool-item" :class="{ 'tool-item-published': t.published }">
                 <div class="tool-head">
                   <span class="tool-name mono">{{ t.toolName }}</span>
+                  <span v-if="t.actionType" class="tool-badge tool-badge-action" title="MCP 工具默认有副作用，广场执行需二次确认">动作型</span>
+                  <span v-else class="tool-badge tool-badge-query" title="无副作用，广场可直接执行">查询型</span>
                   <span class="tool-skill-id mono">{{ t.skillId }}</span>
+                  <label class="publish-switch" :title="t.published ? '已发布到广场，点击下架' : '未发布，点击发布到广场'">
+                    <input
+                      type="checkbox"
+                      :checked="!!t.published"
+                      :disabled="publishingTool === t.toolName"
+                      @change="handlePublish(t, ($event.target as HTMLInputElement).checked)"
+                    />
+                    <span class="publish-track"><span class="publish-thumb"></span></span>
+                    <span class="publish-label">{{ t.published ? '已发布' : '未发布' }}</span>
+                  </label>
                 </div>
                 <div class="tool-desc">{{ t.description || '暂无描述' }}</div>
                 <details class="tool-schema">
@@ -247,7 +262,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useMessage, NPagination } from 'naive-ui'
 import {
   listMcpServers, createMcpServer, updateMcpServer, deleteMcpServer,
-  connectMcpServer, disconnectMcpServer, listMcpTools,
+  connectMcpServer, disconnectMcpServer, listMcpTools, publishMcpTool,
   type McpServer, type McpServerForm, type McpTool,
 } from '@/services/mcp'
 
@@ -463,6 +478,23 @@ function prettyJson(json: string | null | undefined): string {
     return JSON.stringify(JSON.parse(json), null, 2)
   } catch {
     return json
+  }
+}
+
+// ---------- publish（工具级发布开关，Skill 中心 v2） ----------
+const publishingTool = ref<string | null>(null)
+
+async function handlePublish(t: McpTool, published: boolean) {
+  if (!toolsServer.value) return
+  publishingTool.value = t.toolName
+  try {
+    await publishMcpTool(toolsServer.value.id, t.toolName, published)
+    t.published = published
+    message.success(published ? `「${t.toolName}」已发布到技能广场` : `「${t.toolName}」已从广场下架`)
+  } catch (e: unknown) {
+    message.error(e instanceof Error ? e.message : '发布状态更新失败')
+  } finally {
+    publishingTool.value = null
   }
 }
 </script>
@@ -869,6 +901,107 @@ select.form-input {
   padding: 24px;
   text-align: center;
   line-height: 1.6;
+}
+
+.tools-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  background: var(--indigo-bg);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--primary);
+}
+
+.tool-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.tool-badge-action {
+  color: var(--orange, #F59E0B);
+  background: var(--orange-bg, rgba(245, 158, 11, 0.1));
+  border: 1px solid var(--orange-border, rgba(245, 158, 11, 0.3));
+}
+
+.tool-badge-query {
+  color: var(--green, #10B981);
+  background: var(--green-bg, rgba(16, 185, 129, 0.1));
+  border: 1px solid var(--green-border, rgba(16, 185, 129, 0.3));
+}
+
+.tool-item-published {
+  border-color: var(--primary-border);
+  background: linear-gradient(0deg, rgba(99, 102, 241, 0.02), rgba(99, 102, 241, 0.02)), #FFFFFF;
+}
+
+.publish-switch {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.publish-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.publish-track {
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--border);
+  position: relative;
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+
+.publish-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition);
+}
+
+.publish-switch input:checked + .publish-track {
+  background: var(--grad-primary-2, linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%));
+}
+
+.publish-switch input:checked + .publish-track .publish-thumb {
+  left: 16px;
+}
+
+.publish-switch input:focus-visible + .publish-track {
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+}
+
+.publish-switch input:disabled + .publish-track {
+  opacity: 0.5;
+}
+
+.publish-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.publish-switch input:checked ~ .publish-label {
+  color: var(--primary);
 }
 
 .tool-list {

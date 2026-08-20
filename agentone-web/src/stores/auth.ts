@@ -78,8 +78,13 @@ export const useAuthStore = defineStore('auth', () => {
   async function switchWorkspace(wsId: string) {
     const res = await api.post('/api/auth/switch-workspace/' + wsId)
     const data = res.data.data
-    workspaceId.value = data.workspaceId
-    localStorage.setItem('workspaceId', data.workspaceId)
+    // 同步后端返回的完整用户信息（workspaceId 已变，token/refreshToken 由 Cookie 更新）
+    applyAuth({
+      userId: data.userId,
+      email: data.email,
+      nickname: data.nickname,
+      workspaceId: data.workspaceId,
+    })
   }
 
   /** 加载工作空间列表 */

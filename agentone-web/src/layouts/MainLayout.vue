@@ -105,7 +105,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import { useAuthStore } from '@/stores/auth'
@@ -118,6 +118,13 @@ const message = useMessage()
 const collapsed = ref(false)
 const showWsDropdown = ref(false)
 const showUserMenu = ref(false)
+
+// 加载工作空间列表，供侧边栏切换器使用
+onMounted(() => {
+  if (authStore.workspaces.length === 0) {
+    authStore.loadWorkspaces()
+  }
+})
 
 // Navigation groups with SVG icons (from the prototype)
 const navGroups = [
@@ -209,9 +216,13 @@ function handleMenuClick(key: string) {
   showWsDropdown.value = false
 }
 
-function handleSwitchWorkspace(wsId: string) {
-  authStore.switchWorkspace(wsId)
+async function handleSwitchWorkspace(wsId: string) {
   showWsDropdown.value = false
+  if (wsId === authStore.workspaceId) return
+  await authStore.switchWorkspace(wsId)
+  // 切换后刷新当前页面数据（各页面 onMounted 会重新加载）
+  message.success('已切换工作空间')
+  router.replace({ path: route.path, force: true })
 }
 
 function handleLogout() {

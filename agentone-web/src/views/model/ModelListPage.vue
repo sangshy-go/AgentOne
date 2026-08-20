@@ -65,7 +65,7 @@
           </div>
           <div class="provider-detail">
             <span class="provider-detail-label">API Key</span>
-            <span class="provider-detail-value mono">{{ p.apiKey }}</span>
+            <span class="provider-detail-value mono">{{ maskKey(p.apiKey) }}</span>
           </div>
           <div v-if="checkResults[p.id]" class="provider-check-result">
             <span :class="['badge', checkResults[p.id].available ? 'badge-success' : 'badge-danger']">
@@ -588,6 +588,13 @@ function providerColor(provider: string): string {
     custom: 'linear-gradient(135deg, #6366f120, #6366f110)',
   }
   return map[provider] || map.custom
+}
+
+/** 脱敏展示 API Key：仅保留后 4 位，其余以 **** 替代 */
+function maskKey(key: string | undefined): string {
+  if (!key) return '—'
+  if (key.length <= 4) return '****'
+  return '****' + key.slice(-4)
 }
 </script>
 

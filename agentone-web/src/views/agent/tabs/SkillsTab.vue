@@ -100,7 +100,8 @@ async function loadBound() {
 
 async function loadAvailable() {
   try {
-    const res = await listSkills(skillPage.value, skillPageSize.value)
+    // 绑定选择器只展示启用中的技能；「我的技能」管理视角才包含停用项
+    const res = await listSkills({ page: skillPage.value, size: skillPageSize.value, status: 'active' })
     const data = res.data.data
     availableSkills.value = data?.records || []
     skillTotal.value = data?.total || 0

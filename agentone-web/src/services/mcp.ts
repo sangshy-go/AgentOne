@@ -30,6 +30,10 @@ export interface McpTool {
   toolName: string
   description: string
   inputSchema: string
+  /** Skill 中心 v2：是否已发布到广场（默认 false，IT 显式发布后才可见/可绑定） */
+  published?: boolean | null
+  /** Skill 中心 v2：动作型标记（MCP 工具默认有副作用，广场执行需确认） */
+  actionType?: boolean | null
 }
 
 /** 创建 / 更新 MCP Server 入参 */
@@ -83,4 +87,12 @@ export function disconnectMcpServer(serverId: string) {
 /** 查看已发现的工具 */
 export function listMcpTools(serverId: string) {
   return api.get<Result<McpTool[]>>(`/api/mcp-servers/${serverId}/tools`)
+}
+
+/** 工具级「发布到广场」开关（Skill 中心 v2 治理，默认关闭） */
+export function publishMcpTool(serverId: string, toolName: string, published: boolean) {
+  return api.put<Result<McpTool>>(
+    `/api/mcp-servers/${serverId}/tools/${encodeURIComponent(toolName)}/publish`,
+    { published },
+  )
 }

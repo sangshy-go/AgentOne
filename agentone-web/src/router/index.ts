@@ -53,6 +53,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/skill/SkillCenterPage.vue'),
       },
       {
+        path: '/skills/create',
+        name: 'SkillCreate',
+        component: () => import('@/views/skill/SkillCreatePage.vue'),
+      },
+      {
         path: '/mcp',
         name: 'Mcp',
         component: () => import('@/views/mcp/McpServerPage.vue'),
