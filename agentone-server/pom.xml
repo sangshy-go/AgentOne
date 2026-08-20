@@ -39,9 +39,6 @@
         <!-- Spring AI 1.0 -->
         <spring-ai.version>1.0.0</spring-ai.version>
 
-        <!-- Sa-Token 权限认证 -->
-        <sa-token.version>1.39.0</sa-token.version>
-
         <!-- MyBatis-Plus -->
         <mybatis-plus.version>3.5.7</mybatis-plus.version>
 

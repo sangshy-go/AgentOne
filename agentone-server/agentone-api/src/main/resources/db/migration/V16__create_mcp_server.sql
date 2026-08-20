@@ -7,6 +7,9 @@
 -- function calling 调用，复用既有工具化与审计链路。
 -- ============================================================
 
+-- 兜底：清除 V4 遗留的旧结构 mcp_server 表（如有），确保全新/已有环境均能正常迁移
+DROP TABLE IF EXISTS mcp_server;
+
 CREATE TABLE mcp_server (
     id                VARCHAR(36)  PRIMARY KEY DEFAULT uuid_generate_v4(),
     workspace_id      VARCHAR(36)  NOT NULL REFERENCES workspace(id),
