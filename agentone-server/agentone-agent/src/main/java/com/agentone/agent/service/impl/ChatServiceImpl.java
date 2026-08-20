@@ -52,9 +52,11 @@ import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -110,45 +112,52 @@ public class ChatServiceImpl implements ChatService {
         // 3. 先保存用户消息（RAG 检索需要当前消息作为 query）
         saveMessage(session.getId(), "user", dto.getMessage());
 
-        // 4. 构建系统提示词（AGENTS.md + 变量注入 + RAG + 历史上下文）
-        String systemPrompt = buildSystemPrompt(agentDO, session.getId());
+        // 4~9. 构建上下文/引擎并同步调用；失败时补偿 assistant 错误占位，保持配对（Bug5）
+        String reply;
+        int totalTokens;
+        try {
+            // 4. 构建系统提示词（AGENTS.md + 变量注入 + RAG + 历史上下文）
+            String systemPrompt = buildSystemPrompt(agentDO, session.getId());
 
-        // 5. 创建 ReActAgent（每请求一个实例；sink 收集本轮 Skill 调用）
-        List<Map<String, Object>> toolCalls = new java.util.concurrent.CopyOnWriteArrayList<>();
-        ReActAgent agent = buildReActAgent(agentDO, systemPrompt, session.getId(), toolCalls);
+            // 5. 创建 ReActAgent（每请求一个实例；sink 收集本轮 Skill 调用）
+            List<Map<String, Object>> toolCalls = new java.util.concurrent.CopyOnWriteArrayList<>();
+            ReActAgent agent = buildReActAgent(agentDO, systemPrompt, session.getId(), toolCalls);
 
-        // 6. 构建 AgentScope RuntimeContext
-        io.agentscope.core.agent.RuntimeContext agentCtx = io.agentscope.core.agent.RuntimeContext.builder()
-                .sessionId(session.getId())
-                .userId(RuntimeContext.getUserId())
-                .put("workspace_id", RuntimeContext.getWorkspaceId())
-                .put("agent_id", agentDO.getId())
-                .build();
+            // 6. 构建 AgentScope RuntimeContext
+            io.agentscope.core.agent.RuntimeContext agentCtx = io.agentscope.core.agent.RuntimeContext.builder()
+                    .sessionId(session.getId())
+                    .userId(RuntimeContext.getUserId())
+                    .put("workspace_id", RuntimeContext.getWorkspaceId())
+                    .put("agent_id", agentDO.getId())
+                    .build();
 
-        // 7. 调用 AgentScope（同步）
-        Msg userMsg = Msg.builder()
-                .name("user")
-                .role(MsgRole.USER)
-                .content(List.of(TextBlock.builder().text(dto.getMessage()).build()))
-                .build();
+            // 7. 调用 AgentScope（同步）
+            Msg userMsg = Msg.builder()
+                    .name("user")
+                    .role(MsgRole.USER)
+                    .content(List.of(TextBlock.builder().text(dto.getMessage()).build()))
+                    .build();
 
-        Msg response = agent.call(List.of(userMsg), agentCtx).block();
-        String reply = response != null ? response.getTextContent() : "";
+            // 同步调用增加有界超时，避免 429/重试时长期占用 Tomcat 线程（Bug8）
+            // 超时抛出的 ReactorException 由下方 catch(RuntimeException) 统一处理并落库
+            Msg response = agent.call(List.of(userMsg), agentCtx)
+                    .block(Duration.ofMinutes(2));
+            reply = response != null ? response.getTextContent() : "";
 
-        // 8. 保存助手回复（含本轮 Skill 调用快照）
-        saveMessage(session.getId(), "assistant", reply, serializeToolCalls(toolCalls));
+            // 8. 保存助手回复（含本轮 Skill 调用快照 + 耗时/traceId）
+            long durationMs = System.currentTimeMillis() - startTime;
+            saveMessage(session.getId(), "assistant", reply, serializeToolCalls(toolCalls), (int) durationMs);
 
-        int totalTokens = estimateTokens(dto.getMessage() + reply);
+            totalTokens = estimateTokens(dto.getMessage() + reply);
 
-        // 9. 原子更新会话统计（避免并发对话同一 session 时 messageCount 自增丢更新）
-        // 用 UpdateWrapper 在 DB 层做原子自增，而非先查再改
-        com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<ChatSessionDO> statUpd =
-                new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<>();
-        statUpd.eq(ChatSessionDO::getId, session.getId())
-                .setSql("message_count = message_count + 2")
-                .setSql("token_count = token_count + " + totalTokens)
-                .set(ChatSessionDO::getUpdatedAt, LocalDateTime.now());
-        sessionMapper.update(null, statUpd);
+            // 9. 原子更新会话统计（避免并发对话同一 session 时 messageCount 自增丢更新）
+            incrementSessionStats(session.getId(), totalTokens);
+        } catch (RuntimeException e) {
+            // 模型/引擎调用失败：保存 assistant 错误占位，避免留下孤立 user 消息（Bug5）
+            saveAssistantError(session.getId(), RuntimeContext.getUserId(),
+                    RuntimeContext.getWorkspaceId(), "[错误: " + safeMsg(e) + "]");
+            throw e;
+        }
 
         // 10. 返回响应
         ChatResponseVO vo = new ChatResponseVO();
@@ -162,117 +171,143 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public Flux<ServerSentEvent<String>> chatStream(ChatRequestDTO dto) {
-        // 1. 加载 Agent + 会话
-        AgentDO agentDO = loadAgent(dto.getAgentId());
-        ChatSessionDO session = getOrCreateSession(dto.getSessionId(), agentDO);
+        // 整体流程（含同步阶段）包在 Flux.defer 中：
+        // 1) 同步阶段抛出的 BusinessException（如 buildReActAgent 校验失败）会被 onErrorResume 捕获，
+        //    转为 SSE error 事件，而非让已设置的 text/event-stream 返回无法解析的 JSON（Bug6）
+        // 2) 任何阶段出错，最终都保证发出 error + done 事件，避免前端一直等待（Bug2）
+        return Flux.defer(() -> {
+            long streamStart = System.currentTimeMillis();
+            // 1. 加载 Agent + 会话
+            AgentDO agentDO = loadAgent(dto.getAgentId());
+            ChatSessionDO session = getOrCreateSession(dto.getSessionId(), agentDO);
 
-        // 2. 捕获当前请求上下文（SSE doOnComplete 触发时 ThreadLocal 已被清除）
-        String capturedUserId = RuntimeContext.getUserId();
-        String capturedWorkspaceId = RuntimeContext.getWorkspaceId();
+            // 2. 捕获当前请求上下文（SSE doOnComplete 触发时 ThreadLocal 已被清除）
+            String capturedUserId = RuntimeContext.getUserId();
+            String capturedWorkspaceId = RuntimeContext.getWorkspaceId();
 
-        // 3. 先保存用户消息（RAG 检索需要当前消息作为 query）
-        saveMessage(session.getId(), "user", dto.getMessage());
+            // 3. 先保存用户消息（RAG 检索需要当前消息作为 query）
+            saveMessage(session.getId(), "user", dto.getMessage());
 
-        // 4. 构建上下文（AGENTS.md + RAG + 历史）
-        String systemPrompt = buildSystemPrompt(agentDO, session.getId());
-        List<Map<String, Object>> toolCalls = new java.util.concurrent.CopyOnWriteArrayList<>();
-        ReActAgent agent = buildReActAgent(agentDO, systemPrompt, session.getId(), toolCalls);
+            // 4. 构建上下文（AGENTS.md + RAG + 历史）
+            ReActAgent agent;
+            io.agentscope.core.agent.RuntimeContext agentCtx;
+            List<Map<String, Object>> toolCalls = new java.util.concurrent.CopyOnWriteArrayList<>();
+            try {
+                String systemPrompt = buildSystemPrompt(agentDO, session.getId());
+                agent = buildReActAgent(agentDO, systemPrompt, session.getId(), toolCalls);
+                agentCtx = io.agentscope.core.agent.RuntimeContext.builder()
+                        .sessionId(session.getId())
+                        .userId(capturedUserId)
+                        .put("workspace_id", capturedWorkspaceId)
+                        .put("agent_id", agentDO.getId())
+                        .build();
+            } catch (RuntimeException e) {
+                // 同步阶段异常：补偿一条 assistant 错误占位，避免留下孤立 user 消息（Bug5）
+                saveAssistantError(session.getId(), capturedUserId, capturedWorkspaceId,
+                        "[错误: " + safeMsg(e) + "]");
+                throw e;
+            }
 
-        io.agentscope.core.agent.RuntimeContext agentCtx = io.agentscope.core.agent.RuntimeContext.builder()
-                .sessionId(session.getId())
-                .userId(capturedUserId)
-                .put("workspace_id", capturedWorkspaceId)
-                .put("agent_id", agentDO.getId())
-                .build();
+            // 5. 构建用户消息
+            Msg userMsg = Msg.builder()
+                    .name("user")
+                    .role(MsgRole.USER)
+                    .content(List.of(TextBlock.builder().text(dto.getMessage()).build()))
+                    .build();
 
-        // 5. 构建用户消息
-        Msg userMsg = Msg.builder()
-                .name("user")
-                .role(MsgRole.USER)
-                .content(List.of(TextBlock.builder().text(dto.getMessage()).build()))
-                .build();
+            // 6. 流式调用 AgentScope streamEvents()，包装为 SSE 事件
+            StringBuilder fullReply = new StringBuilder();
 
-        // 6. 流式调用 AgentScope streamEvents()，包装为 SSE 事件
-        StringBuilder fullReply = new StringBuilder();
+            // 第一个事件：推送 sessionId（前端新建会话时需要知道 sessionId）
+            ServerSentEvent<String> sessionEvent = ServerSentEvent.<String>builder()
+                    .event("session")
+                    .data(session.getId())
+                    .build();
 
-        // 第一个事件：推送 sessionId（前端新建会话时需要知道 sessionId）
-        ServerSentEvent<String> sessionEvent = ServerSentEvent.<String>builder()
-                .event("session")
-                .data(session.getId())
-                .build();
-
-        Flux<ServerSentEvent<String>> deltaFlux = agent.streamEvents(userMsg, agentCtx)
-                .<ServerSentEvent<String>>handle((event, sink) -> {
-                    if (event instanceof TextBlockDeltaEvent textEvent) {
-                        String chunk = textEvent.getDelta();
-                        if (chunk != null && !chunk.isEmpty()) {
-                            fullReply.append(chunk);
-                            sink.next(ServerSentEvent.<String>builder()
-                                    .event("delta")
-                                    .data(chunk)
-                                    .build());
+            Flux<ServerSentEvent<String>> deltaFlux = agent.streamEvents(userMsg, agentCtx)
+                    .<ServerSentEvent<String>>handle((event, sink) -> {
+                        if (event instanceof TextBlockDeltaEvent textEvent) {
+                            String chunk = textEvent.getDelta();
+                            if (chunk != null && !chunk.isEmpty()) {
+                                fullReply.append(chunk);
+                                sink.next(ServerSentEvent.<String>builder()
+                                        .event("delta")
+                                        .data(chunk)
+                                        .build());
+                            }
+                        } else if (event instanceof ThinkingBlockDeltaEvent thinkingEvent) {
+                            String chunk = thinkingEvent.getDelta();
+                            if (chunk != null && !chunk.isEmpty()) {
+                                sink.next(ServerSentEvent.<String>builder()
+                                        .event("thinking")
+                                        .data(chunk)
+                                        .build());
+                            }
                         }
-                    } else if (event instanceof ThinkingBlockDeltaEvent thinkingEvent) {
-                        String chunk = thinkingEvent.getDelta();
-                        if (chunk != null && !chunk.isEmpty()) {
-                            sink.next(ServerSentEvent.<String>builder()
-                                    .event("thinking")
-                                    .data(chunk)
-                                    .build());
-                        }
-                    }
-                    // 其他事件类型（ModelCallStartEvent、BlockStartEvent 等）静默忽略
-                })
-                .doOnComplete(() -> {
-                    // 流结束后保存完整回复
-                    // 注意：此时 RuntimeContext 已被 JwtAuthFilter 清除
-                    // 需要临时恢复，以便 MyBatis 自动填充 workspaceId
-                    try {
-                        com.agentone.common.context.Context ctx =
-                                com.agentone.common.context.Context.of(capturedUserId, capturedWorkspaceId);
-                        RuntimeContext.set(ctx);
-
-                        saveMessage(session.getId(), "assistant", fullReply.toString(),
-                                serializeToolCalls(toolCalls));
-                        // 原子自增 message_count（并发安全，避免丢更新）
-                        com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<ChatSessionDO> statUpd =
-                                new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<>();
-                        statUpd.eq(ChatSessionDO::getId, session.getId())
-                                .setSql("message_count = message_count + 2")
-                                .set(ChatSessionDO::getUpdatedAt, LocalDateTime.now());
-                        sessionMapper.update(null, statUpd);
-                    } finally {
-                        RuntimeContext.clear();
-                    }
-                })
-                .doOnError(error -> {
-                    // 流中途失败：记录错误日志，保存已接收的部分内容（如果有）
-                    log.error("流式对话失败: sessionId={}, error={}", session.getId(), error.getMessage());
-                    if (fullReply.length() > 0) {
+                        // 其他事件类型（ModelCallStartEvent、BlockStartEvent 等）静默忽略
+                    })
+                    .doOnComplete(() -> {
+                        // 流结束后保存完整回复
+                        // 注意：此时 RuntimeContext 已被 JwtAuthFilter 清除，需临时恢复以便 MyBatis 填充
                         try {
                             com.agentone.common.context.Context ctx =
                                     com.agentone.common.context.Context.of(capturedUserId, capturedWorkspaceId);
                             RuntimeContext.set(ctx);
-                            saveMessage(session.getId(), "assistant",
-                                    fullReply.toString() + "\n\n[错误: " + error.getMessage() + "]");
+
+                            saveMessage(session.getId(), "assistant", fullReply.toString(),
+                                    serializeToolCalls(toolCalls),
+                                    (int) (System.currentTimeMillis() - streamStart));
+                            // 原子自增统计：message_count +2，token_count 累加（Bug3）
+                            incrementSessionStats(session.getId(),
+                                    estimateTokens(dto.getMessage() + fullReply.toString()));
                         } finally {
                             RuntimeContext.clear();
                         }
-                    }
-                });
+                    })
+                    .doOnError(error -> {
+                        // 流中途失败：记录日志，并始终补偿一条 assistant 占位消息（Bug5）
+                        // 即使没有任何 delta，也要落一条 assistant 消息，保持 user/assistant 配对
+                        log.error("流式对话失败: sessionId={}, error={}", session.getId(), error.getMessage());
+                        String content = fullReply.length() > 0
+                                ? fullReply.toString() + "\n\n[错误: " + safeMsg(error) + "]"
+                                : "[错误: " + safeMsg(error) + "]";
+                        try {
+                            com.agentone.common.context.Context ctx =
+                                    com.agentone.common.context.Context.of(capturedUserId, capturedWorkspaceId);
+                            RuntimeContext.set(ctx);
+                            saveMessage(session.getId(), "assistant", content, null,
+                                    (int) (System.currentTimeMillis() - streamStart));
+                            incrementSessionStats(session.getId(),
+                                    estimateTokens(dto.getMessage() + content));
+                        } catch (Exception ignore) {
+                            log.warn("流式失败补偿消息落库异常: {}", ignore.getMessage());
+                        } finally {
+                            RuntimeContext.clear();
+                        }
+                    });
 
-        // 结束事件：[DONE]
-        ServerSentEvent<String> doneEvent = ServerSentEvent.<String>builder()
-                .event("done")
-                .data("[DONE]")
-                .build();
+            // 结束事件：[DONE]
+            ServerSentEvent<String> doneEvent = ServerSentEvent.<String>builder()
+                    .event("done")
+                    .data("[DONE]")
+                    .build();
 
-        // 拼接：session → deltas → done，错误时追加 error 事件
-        return Flux.concat(Flux.just(sessionEvent), deltaFlux, Flux.just(doneEvent))
-                .onErrorResume(error -> Flux.just(ServerSentEvent.<String>builder()
-                        .event("error")
-                        .data(error.getMessage() != null ? error.getMessage() : "未知错误")
-                        .build()));
+            // 拼接：session → deltas → done
+            return Flux.concat(Flux.just(sessionEvent), deltaFlux, Flux.just(doneEvent));
+        })
+        .onErrorResume(error -> {
+            // 始终发出 error + done，避免前端一直等待（Bug2）；
+            // 同步阶段异常（如 BusinessException）也走这里转为 SSE error 事件（Bug6）
+            ServerSentEvent<String> errEvent = ServerSentEvent.<String>builder()
+                    .event("error")
+                    .data(safeMsg(error))
+                    .build();
+            ServerSentEvent<String> doneEvent = ServerSentEvent.<String>builder()
+                    .event("done")
+                    .data("[DONE]")
+                    .build();
+            return Flux.just(errEvent, doneEvent);
+        });
     }
 
     @Override
@@ -385,7 +420,8 @@ public class ChatServiceImpl implements ChatService {
             }
             // S4: 跨租户防护——Agent 只能使用所属工作空间的模型 / 供应商，
             // 否则可引用其他空间的模型，消耗他人供应商 API Key（横向越权 + 费用转嫁）。
-            if (!RuntimeContext.getWorkspaceId().equals(provider.getWorkspaceId())) {
+            // 使用 null-safe 比较：当前 workspaceId 可能为空，直接 .equals 会 NPE（Bug1）
+            if (!Objects.equals(RuntimeContext.getWorkspaceId(), provider.getWorkspaceId())) {
                 throw new BusinessException(6012,
                         "当前工作空间无权使用该模型供应商，请选择本空间的模型");
             }
@@ -487,7 +523,12 @@ public class ChatServiceImpl implements ChatService {
                 if (!session.getUserId().equals(currentUserId)) {
                     throw new BusinessException(4003, "无权访问该会话");
                 }
-                return session;
+                // 跨 Agent 会话复用防护：session 必须属于当前 Agent，
+                // 否则会注入另一 Agent 的历史/RAG 上下文（Bug4）
+                if (agent.getId().equals(session.getAgentId())) {
+                    return session;
+                }
+                // agentId 不匹配：不返回旧 session，下方创建新 session
             }
         }
         ChatSessionDO session = new ChatSessionDO();
@@ -523,7 +564,11 @@ public class ChatServiceImpl implements ChatService {
         MemoryConfig memoryConfig = parseMemoryConfig(agent.getMemoryConfig());
         int maxRounds = memoryConfig.getShortTermRounds() != null ? memoryConfig.getShortTermRounds() : 10;
         String overflowStrategy = memoryConfig.getOverflowStrategy() != null ? memoryConfig.getOverflowStrategy() : "sliding_window";
-        String contextPrompt = memoryService.buildContextPrompt(sessionId, maxRounds, overflowStrategy);
+        // 排除本轮刚落库的当前用户消息，避免重复发送并腾出滑动窗口槽位（Bug1）
+        // maxTokenWindow 作为 token 预算的二次裁剪上限（Bug7）
+        int maxTokenWindow = memoryConfig.getMaxTokenWindow() != null ? memoryConfig.getMaxTokenWindow() : 0;
+        String contextPrompt = memoryService.buildContextPrompt(sessionId, maxRounds, overflowStrategy, true,
+                maxTokenWindow);
 
         if (!contextPrompt.isEmpty()) {
             sb.append("\n\n").append(contextPrompt);
@@ -555,21 +600,13 @@ public class ChatServiceImpl implements ChatService {
                 return "";
             }
 
-            // 1. 从所有知识库收集结果，带各自 binding 的 threshold 过滤
+            // 1. 从所有知识库收集结果，各自 binding 的 threshold 过滤下沉到知识服务
             List<SearchResultVO> allResults = new java.util.ArrayList<>();
             for (AgentKnowledgeBindingVO binding : bindings) {
                 int topK = binding.getTopK() != null ? binding.getTopK() : 5;
                 List<SearchResultVO> results = knowledgeService.search(
-                        binding.getKnowledgeId(), query, topK);
-
-                for (SearchResultVO result : results) {
-                    if (result.getScore() != null
-                            && binding.getSimilarityThreshold() != null
-                            && result.getScore() < binding.getSimilarityThreshold()) {
-                        continue;
-                    }
-                    allResults.add(result);
-                }
+                        binding.getKnowledgeId(), query, topK, binding.getSimilarityThreshold());
+                allResults.addAll(results);
             }
 
             if (allResults.isEmpty()) {
@@ -632,14 +669,68 @@ public class ChatServiceImpl implements ChatService {
     }
 
     private void saveMessage(String sessionId, String role, String content, String skillCallsJson) {
+        saveMessage(sessionId, role, content, skillCallsJson, null);
+    }
+
+    private void saveMessage(String sessionId, String role, String content, String skillCallsJson,
+                             Integer durationMs) {
         ChatMessageDO msg = new ChatMessageDO();
         msg.setSessionId(sessionId);
         msg.setRole(role);
         msg.setContent(content);
         msg.setTokenCount(estimateTokens(content));
         msg.setSkillCalls(skillCallsJson);
+        msg.setDurationMs(durationMs);
+        msg.setTraceId(UUID.randomUUID().toString());
         msg.setCreatedAt(LocalDateTime.now());
         messageMapper.insert(msg);
+    }
+
+    /**
+     * 原子自增会话统计（并发安全，避免丢更新）。
+     * message_count +2（本轮 1 条 user + 1 条 assistant），token_count 累加增量。
+     */
+    private void incrementSessionStats(String sessionId, int tokenDelta) {
+        com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<ChatSessionDO> statUpd =
+                new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<>();
+        statUpd.eq(ChatSessionDO::getId, sessionId)
+                .setSql("message_count = message_count + 2")
+                .setSql("token_count = token_count + " + tokenDelta)
+                .set(ChatSessionDO::getUpdatedAt, LocalDateTime.now());
+        sessionMapper.update(null, statUpd);
+    }
+
+    /**
+     * 模型/引擎调用失败时的补偿：保存一条 assistant 错误占位消息，保持 user/assistant 配对，
+     * 并原子更新统计，避免留下孤立的 user 消息（Bug5）。
+     */
+    private void saveAssistantError(String sessionId, String userId, String workspaceId, String content) {
+        try {
+            com.agentone.common.context.Context ctx =
+                    com.agentone.common.context.Context.of(userId, workspaceId);
+            RuntimeContext.set(ctx);
+            saveMessage(sessionId, "assistant", content);
+            incrementSessionStats(sessionId, estimateTokens(content));
+        } catch (Exception ignore) {
+            log.warn("异常补偿消息落库失败: sessionId={}, error={}", sessionId, ignore.getMessage());
+        } finally {
+            RuntimeContext.clear();
+        }
+    }
+
+    /** 取异常信息，脱敏截断，避免内部细节（堆栈/敏感路径）落入数据库或外泄（Bug9） */
+    private String safeMsg(Throwable t) {
+        String m = t != null ? t.getMessage() : null;
+        if (m == null || m.isBlank()) {
+            m = t != null && t.getClass().getSimpleName() != null
+                    ? t.getClass().getSimpleName() : "未知错误";
+        }
+        // 去除换行/制表，剥离可能的堆栈片段，并截断到 200 字符
+        String sanitized = m.replaceAll("[\\r\\n\\t]+", " ").trim();
+        if (sanitized.length() > 200) {
+            sanitized = sanitized.substring(0, 200) + "...";
+        }
+        return sanitized;
     }
 
     private ModelConfig parseModelConfig(String json) {

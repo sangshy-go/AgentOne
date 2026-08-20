@@ -1,6 +1,7 @@
 package com.agentone.auth.filter;
 
 import com.agentone.auth.util.JwtUtil;
+import com.agentone.auth.util.TokenBlacklist;
 import com.agentone.common.context.Context;
 import com.agentone.common.context.RuntimeContext;
 import com.auth0.jwt.interfaces.DecodedJWT;
@@ -27,6 +28,7 @@ import java.util.Map;
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
+    private final TokenBlacklist tokenBlacklist;
     private final ObjectMapper objectMapper;
 
     /**
@@ -64,6 +66,20 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         }
         try {
             DecodedJWT jwt = jwtUtil.parseToken(token);
+
+            // 安全防护：拒绝 refresh token 用于普通 API 认证
+            // refresh token 有效期 7 天，若可当 access token 用则等于变相绕过 24h 过期限制
+            if (jwtUtil.isRefreshToken(jwt)) {
+                writeUnauthorized(response, "Refresh token cannot be used for API authentication");
+                return;
+            }
+
+            // 服务端失效：被注销/滚动失效的 jti 一律拒绝（登出或 refresh 轮换后旧 token 立即失效）
+            if (tokenBlacklist.isBlacklisted(jwtUtil.getJti(jwt))) {
+                writeUnauthorized(response, "Token has been revoked");
+                return;
+            }
+
             String userId = jwtUtil.getUserId(jwt);
             String workspaceId = jwtUtil.getWorkspaceId(jwt);
             String email = jwtUtil.getEmail(jwt);
@@ -90,7 +106,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
      */
     private String extractToken(HttpServletRequest request) {
         String authHeader = request.getHeader("Authorization");
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+        // RFC 7235：scheme 大小写不敏感，兼容客户端小写 "bearer "
+        if (authHeader != null && authHeader.length() > 7
+                && authHeader.regionMatches(true, 0, "Bearer ", 0, 7)) {
             return authHeader.substring(7);
         }
         jakarta.servlet.http.Cookie[] cookies = request.getCookies();

@@ -8,9 +8,11 @@ import com.agentone.skill.core.SkillRegistry;
 import com.agentone.skill.dto.McpServerDTO;
 import com.agentone.skill.entity.AgentSkillBindingDO;
 import com.agentone.skill.entity.McpServerDO;
+import com.agentone.skill.entity.McpToolPublishDO;
 import com.agentone.skill.executor.McpSkillExecutor;
 import com.agentone.skill.mapper.AgentSkillBindingMapper;
 import com.agentone.skill.mapper.McpServerMapper;
+import com.agentone.skill.mapper.McpToolPublishMapper;
 import com.agentone.skill.mcp.McpConnectionManager;
 import com.agentone.skill.service.McpServerService;
 import com.agentone.skill.vo.McpServerVO;
@@ -59,6 +61,7 @@ public class McpServerServiceImpl implements McpServerService {
     private final SkillRegistry skillRegistry;
     private final McpConnectionManager connectionManager;
     private final ObjectMapper objectMapper;
+    private final McpToolPublishMapper mcpToolPublishMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -86,11 +89,24 @@ public class McpServerServiceImpl implements McpServerService {
         McpServerDO server = requireServer(serverId);
         validate(dto);
 
-        // 连接配置变化时，旧连接与其注册的工具全部失效，需重新 connect
+        // 连接配置变化（含 headers / args / timeoutMs）时，旧连接与其注册的工具全部失效，需重新 connect。
+        // 结构化比较，避免 JSON 序列化顺序差异导致误判；args/headers 为空时归一为默认空集合。
+        List<?> oldArgs = readJson(server.getArgs(), LIST_TYPE, List.of());
+        List<?> newArgs = dto.getArgs() != null ? dto.getArgs() : List.of();
+        Map<String, String> oldHeaders = readJson(server.getHeaders(), MAP_TYPE, Map.of());
+        Map<String, String> newHeaders = dto.getHeaders() != null ? dto.getHeaders() : Map.of();
         boolean connectionDirty = !java.util.Objects.equals(server.getTransport(), dto.getTransport())
                 || !java.util.Objects.equals(server.getUrl(), dto.getUrl())
-                || !java.util.Objects.equals(server.getCommand(), dto.getCommand());
-        if (connectionDirty && connectionManager.isConnected(serverId)) {
+                || !java.util.Objects.equals(server.getCommand(), dto.getCommand())
+                || !java.util.Objects.equals(oldArgs, newArgs)
+                || !java.util.Objects.equals(oldHeaders, newHeaders)
+                || (dto.getTimeoutMs() != null
+                    && !java.util.Objects.equals(server.getTimeoutMs(), dto.getTimeoutMs()));
+
+        // status 转为 disabled 时无论连接参数是否变化都必须关闭连接并注销工具，否则 disabled 的 Server 仍在线。
+        boolean toDisabled = "disabled".equals(dto.getStatus());
+
+        if ((connectionDirty || toDisabled) && connectionManager.isConnected(serverId)) {
             unregisterServerTools(serverId);
             connectionManager.close(serverId);
         }
@@ -116,6 +132,9 @@ public class McpServerServiceImpl implements McpServerService {
 
         unregisterServerTools(serverId);
         connectionManager.close(serverId);
+        // 级联清理发布治理状态（Server 删除后其工具发布记录无意义）
+        mcpToolPublishMapper.delete(new LambdaQueryWrapper<McpToolPublishDO>()
+                .eq(McpToolPublishDO::getServerId, serverId));
         mcpServerMapper.deleteById(serverId);
     }
 
@@ -164,10 +183,15 @@ public class McpServerServiceImpl implements McpServerService {
             server.setLastConnectedAt(LocalDateTime.now());
             mcpServerMapper.updateById(server);
             log.info("MCP Server 连接成功: id={}, name={}, 发现工具 {} 个", serverId, server.getName(), tools.size());
-            return tools.stream().map(t -> toToolVO(serverId, t)).toList();
+            Set<String> publishedNames = publishedToolNames(serverId);
+            return tools.stream().map(t -> toToolVO(serverId, t, publishedNames.contains(t.name()))).toList();
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
+            // 工具发现/注册失败：best-effort 清理上一轮可能残留的虚拟工具注册
+            // （其 client 已被打开或即将关闭，残留执行器会导致 Agent 调用失败）。
+            // open() 已关闭旧 client，这里再注销旧工具，最后关闭新 client。
+            unregisterServerTools(serverId);
             connectionManager.close(serverId);
             log.warn("MCP Server 工具发现失败: id={}, error={}", serverId, e.getMessage());
             throw new BusinessException(5011, "MCP 工具发现失败: " + rootMessage(e));
@@ -185,6 +209,7 @@ public class McpServerServiceImpl implements McpServerService {
     public List<McpToolVO> listTools(String serverId) {
         requireServer(serverId);
         String prefix = McpSkillExecutor.SKILL_ID_PREFIX + serverId + "-";
+        Set<String> publishedNames = publishedToolNames(serverId);
         return skillRegistry.listDescriptors().stream()
                 .filter(d -> d.getId() != null && d.getId().startsWith(prefix))
                 .map(d -> {
@@ -193,9 +218,64 @@ public class McpServerServiceImpl implements McpServerService {
                     vo.setToolName(d.getId().substring(prefix.length()));
                     vo.setDescription(d.getDescription());
                     vo.setInputSchema(writeJson(d.getInputSchema()));
+                    vo.setPublished(publishedNames.contains(vo.getToolName()));
+                    vo.setActionType(d.isActionType());
                     return vo;
                 })
                 .toList();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public McpToolVO publishTool(String serverId, String toolName, boolean published) {
+        requireServer(serverId);
+        if (toolName == null || toolName.isBlank()) {
+            throw new BusinessException(5010, "MCP 工具名不合法");
+        }
+
+        // upsert 发布状态：行不存在则插入（默认关闭 → 首次操作即显式意图）
+        McpToolPublishDO row = mcpToolPublishMapper.selectOne(
+                new LambdaQueryWrapper<McpToolPublishDO>()
+                        .eq(McpToolPublishDO::getServerId, serverId)
+                        .eq(McpToolPublishDO::getToolName, toolName));
+        if (row == null) {
+            row = new McpToolPublishDO();
+            row.setWorkspaceId(RuntimeContext.getWorkspaceId());
+            row.setServerId(serverId);
+            row.setToolName(toolName);
+            row.setPublished(published);
+            row.setUpdatedAt(LocalDateTime.now());
+            mcpToolPublishMapper.insert(row);
+        } else {
+            row.setPublished(published);
+            row.setUpdatedAt(LocalDateTime.now());
+            mcpToolPublishMapper.updateById(row);
+        }
+        log.info("MCP 工具发布状态变更: serverId={}, tool={}, published={}", serverId, toolName, published);
+
+        McpToolVO vo = new McpToolVO();
+        vo.setSkillId(McpSkillExecutor.skillIdOf(serverId, toolName));
+        vo.setToolName(toolName);
+        vo.setPublished(published);
+        // 工具在线时补充描述与 schema（离线发布仅持久化状态，连接后列表自动带出）
+        skillRegistry.getExecutor(vo.getSkillId()).ifPresent(executor -> {
+            SkillDescriptor descriptor = executor.getDescriptor();
+            vo.setDescription(descriptor.getDescription());
+            vo.setInputSchema(writeJson(descriptor.getInputSchema()));
+            vo.setActionType(descriptor.isActionType());
+        });
+        return vo;
+    }
+
+    /** 该 Server 已发布的工具名集合（mcp_tool_publish.published=true） */
+    private Set<String> publishedToolNames(String serverId) {
+        return mcpToolPublishMapper.selectList(
+                        new LambdaQueryWrapper<McpToolPublishDO>()
+                                .eq(McpToolPublishDO::getServerId, serverId)
+                                .eq(McpToolPublishDO::getPublished, true))
+                .stream()
+                .map(McpToolPublishDO::getToolName)
+                .collect(java.util.stream.Collectors.toSet());
     }
 
     @Override
@@ -265,12 +345,15 @@ public class McpServerServiceImpl implements McpServerService {
         return vo;
     }
 
-    private McpToolVO toToolVO(String serverId, McpSchema.Tool tool) {
+    private McpToolVO toToolVO(String serverId, McpSchema.Tool tool, boolean published) {
         McpToolVO vo = new McpToolVO();
         vo.setSkillId(McpSkillExecutor.skillIdOf(serverId, tool.name()));
         vo.setToolName(tool.name());
         vo.setDescription(tool.description());
         vo.setInputSchema(writeJson(tool.inputSchema()));
+        vo.setPublished(published);
+        // MCP 工具默认动作型（SDK 0.9.0 无 annotations，副作用未知保守处理）
+        vo.setActionType(true);
         return vo;
     }
 

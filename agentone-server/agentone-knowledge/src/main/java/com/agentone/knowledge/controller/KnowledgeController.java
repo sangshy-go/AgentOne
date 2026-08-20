@@ -23,7 +23,33 @@ import java.util.List;
 @RequiredArgsConstructor
 public class KnowledgeController {
 
+    /**
+     * P3: 分页与 topK 入参收敛。
+     *
+     * 此前 page / size / topK 直接透传，客户端可传 size=1000000 或 topK=100000，
+     * 单次请求即拉取海量行/向量，造成 DB 与内存压力（可被用于放大攻击）。
+     * 这里在入口统一 clamp：size ∈ [1,100]、page ∈ [1,10000]、topK ∈ [1,20]。
+     */
+    private static final int MAX_PAGE_SIZE = 100;
+    private static final int DEFAULT_PAGE_SIZE = 20;
+    private static final int MAX_PAGE = 10000;
+    private static final int MAX_TOP_K = 20;
+
     private final KnowledgeService knowledgeService;
+
+    private static int clampPage(Integer page) {
+        if (page == null || page < 1) return 1;
+        return Math.min(page, MAX_PAGE);
+    }
+
+    private static int clampSize(Integer size) {
+        if (size == null || size < 1) return DEFAULT_PAGE_SIZE;
+        return Math.min(size, MAX_PAGE_SIZE);
+    }
+
+    private static int clampTopK(int topK) {
+        return Math.max(1, Math.min(topK, MAX_TOP_K));
+    }
 
     // ==================== 知识库管理 ====================
 
@@ -36,7 +62,7 @@ public class KnowledgeController {
     public Result<PageResult<KnowledgeBaseVO>> listKnowledgeBases(
             @RequestParam(required = false, defaultValue = "1") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer size) {
-        return Result.success(knowledgeService.listKnowledgeBases(page, size));
+        return Result.success(knowledgeService.listKnowledgeBases(clampPage(page), clampSize(size)));
     }
 
     @GetMapping("/bases/{id}")
@@ -70,7 +96,7 @@ public class KnowledgeController {
             @PathVariable String knowledgeId,
             @RequestParam(required = false, defaultValue = "1") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer size) {
-        return Result.success(knowledgeService.listDocuments(knowledgeId, page, size));
+        return Result.success(knowledgeService.listDocuments(knowledgeId, clampPage(page), clampSize(size)));
     }
 
     @DeleteMapping("/documents/{documentId}")
@@ -90,8 +116,9 @@ public class KnowledgeController {
     public Result<List<SearchResultVO>> search(
             @PathVariable String knowledgeId,
             @RequestParam String query,
-            @RequestParam(defaultValue = "5") int topK) {
-        return Result.success(knowledgeService.search(knowledgeId, query, topK));
+            @RequestParam(defaultValue = "5") int topK,
+            @RequestParam(required = false) Double similarityThreshold) {
+        return Result.success(knowledgeService.search(knowledgeId, query, clampTopK(topK), similarityThreshold));
     }
 
     // ==================== Agent 绑定 ====================

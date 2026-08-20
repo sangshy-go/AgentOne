@@ -37,6 +37,9 @@ public class SkillAgentTool implements AgentTool {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /** 返回给 LLM 的工具结果最大字符数，超出则截断，避免大结果撑爆上下文窗口（Bug3） */
+    private static final int MAX_TOOL_RESULT_CHARS = 4000;
+
     private final SkillExecutor executor;
     private final SkillDescriptor descriptor;
     private final SkillCallLogRecorder recorder;
@@ -114,10 +117,10 @@ public class SkillAgentTool implements AgentTool {
             recordCallLog(param, context, invocation, input, result, duration);
 
             if (result.isSuccess()) {
-                return ToolResultBlock.text(formatData(result.getData()));
+                return ToolResultBlock.text(truncate(formatData(result.getData())));
             } else {
-                return ToolResultBlock.error(
-                        result.getErrorMessage() != null ? result.getErrorMessage() : "Skill 执行失败");
+                String errMsg = result.getErrorMessage() != null ? result.getErrorMessage() : "Skill 执行失败";
+                return ToolResultBlock.error(truncate(errMsg));
             }
         }).subscribeOn(Schedulers.boundedElastic());
     }
@@ -177,6 +180,17 @@ public class SkillAgentTool implements AgentTool {
         } catch (Exception e) {
             return String.valueOf(value);
         }
+    }
+
+    /** 截断过长的工具结果，超出 MAX_TOOL_RESULT_CHARS 时追加 [truncated] 标记（Bug3） */
+    private String truncate(String s) {
+        if (s == null) {
+            return "";
+        }
+        if (s.length() <= MAX_TOOL_RESULT_CHARS) {
+            return s;
+        }
+        return s.substring(0, MAX_TOOL_RESULT_CHARS) + "\n[truncated]";
     }
 
     /** 把 skill ID 转换为合法的 function name（只保留字母、数字、下划线）。 */

@@ -19,8 +19,9 @@ public class SkillDO {
 
     private String workspaceId;
     private String name;
-    private String type;        // builtin / api / function / mcp / market
+    private String type;        // builtin / api / prompt / function / mcp / market
     private String source;
+    private String category;    // 业务分类（课题⑧，受控词表，缺省"其他"）
     private String description;
     private String inputSchema;   // JSONB
     private String outputSchema;  // JSONB

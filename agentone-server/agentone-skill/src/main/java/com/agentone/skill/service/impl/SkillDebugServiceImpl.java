@@ -135,6 +135,9 @@ public class SkillDebugServiceImpl implements SkillDebugService {
 
     /** 生成执行计划预览文本（不落真实请求） */
     private String buildPlan(SkillDescriptor descriptor) {
+        if ("prompt".equals(descriptor.getType())) {
+            return "返回 Skill 指令内容（渐进式披露，不发起外部请求）";
+        }
         if ("api".equals(descriptor.getType())) {
             // api Skill 从 DB 读 config 展示目标地址（selectById 自带租户过滤）
             SkillDO skill = skillMapper.selectById(descriptor.getId());

@@ -124,21 +124,27 @@ public class WorkspaceController {
     }
 
     /**
-     * 删除工作空间（软删除）
+     * 删除工作空间（软删除，仅 owner 可操作）
      */
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable String id) {
-        if (!workspaceService.checkPermission(RuntimeContext.getUserId(), id)) {
+        String userId = RuntimeContext.getUserId();
+        if (!workspaceService.checkPermission(userId, id)) {
             return Result.fail(2002, "无权操作该工作空间");
+        }
+
+        // 仅 owner 可删除工作空间
+        String role = workspaceService.getUserRole(userId, id);
+        if (!"owner".equals(role)) {
+            return Result.fail(2003, "仅工作空间所有者可删除");
         }
 
         WorkspaceDO workspace = workspaceMapper.selectById(id);
         if (workspace == null) {
             return Result.fail(2001, "工作空间不存在");
         }
-        workspace.setDeletedAt(LocalDateTime.now());
-        workspace.setUpdatedAt(LocalDateTime.now());
-        workspaceMapper.updateById(workspace);
+        // 软删除工作空间并清理 user_workspace 关联（事务内完成，默认工作空间自动重算）
+        workspaceService.deleteWorkspace(id);
         return Result.ok();
     }
 }

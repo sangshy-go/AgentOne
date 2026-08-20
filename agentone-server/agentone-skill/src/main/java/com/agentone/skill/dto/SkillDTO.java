@@ -4,17 +4,26 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 /**
- * 创建 / 更新 API 模式 Skill 的入参。
+ * 创建 / 更新用户 Skill 的入参。
  *
- * config 示例：
+ * type=api（默认，HTTP API 封装）config 示例：
  * {"url": "https://api.example.com/query", "method": "POST",
  *  "headers": {"Authorization": "Bearer xxx"}, "timeout": 10000}
+ *
+ * type=prompt（内容型 Skill）config 示例：
+ * {"content": "## 信贷审批报告规范\n1. ..."}
  */
 @Data
 public class SkillDTO {
 
     @NotBlank(message = "Skill 名称不能为空")
     private String name;
+
+    /** Skill 类型：api（HTTP 封装，缺省）/ prompt（内容型指令） */
+    private String type;
+
+    /** 业务分类（受控词表，缺省"其他"） */
+    private String category;
 
     private String description;
 

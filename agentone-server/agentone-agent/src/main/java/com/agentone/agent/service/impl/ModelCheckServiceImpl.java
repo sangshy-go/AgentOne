@@ -2,6 +2,7 @@ package com.agentone.agent.service.impl;
 
 import com.agentone.agent.dto.ModelCheckDTO;
 import com.agentone.agent.service.ModelCheckService;
+import com.agentone.agent.util.BaseUrlValidator;
 import com.agentone.agent.vo.ModelCheckVO;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
@@ -29,6 +30,8 @@ public class ModelCheckServiceImpl implements ModelCheckService {
 
         try {
             String baseUrl = dto.getBaseUrl() != null ? dto.getBaseUrl() : "https://api.openai.com";
+            // SSRF 防护：拒绝访问内网/回环/链路本地/保留地址（Bug7）
+            BaseUrlValidator.validateForSsrf(baseUrl);
             Model tempModel = OpenAIChatModel.builder()
                     .modelName(dto.getModel())
                     .apiKey(dto.getApiKey())

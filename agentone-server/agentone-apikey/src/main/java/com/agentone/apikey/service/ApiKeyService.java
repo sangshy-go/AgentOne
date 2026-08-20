@@ -35,12 +35,7 @@ public interface ApiKeyService {
     ApiKeyDO validate(String rawKey);
 
     /**
-     * 校验调用次数是否超限
+     * 校验并原子递增调用次数，返回是否仍在限额内
      */
     boolean checkDailyLimit(ApiKeyDO apiKey);
-
-    /**
-     * 增加调用计数
-     */
-    void incrementUsage(ApiKeyDO apiKey);
 }

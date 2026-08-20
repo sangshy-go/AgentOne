@@ -40,6 +40,10 @@ public class V1ChatController {
      */
     @PostMapping("/chat")
     public Result<ChatResponseVO> chat(@Valid @RequestBody ChatRequestDTO dto) {
+        // 同步接口不支持流式：客户端传 stream=true 时明确拒绝，避免静默忽略导致契约不符
+        if (dto.isStream()) {
+            throw new BusinessException(400, "同步 /v1/chat 不支持流式，请改用 /v1/chat/stream");
+        }
         checkAgentPermission(dto.getAgentId());
         return Result.ok(chatService.chat(dto));
     }
@@ -81,8 +85,8 @@ public class V1ChatController {
         try {
             return objectMapper.readValue(json, new TypeReference<List<String>>() {});
         } catch (Exception e) {
-            log.warn("解析 allowedAgents 失败: {}", json);
-            return Collections.emptyList();
+            // fail-closed：allowedAgents 字段损坏时拒绝请求，而非误判为"全部放行"
+            throw new BusinessException(403, "API Key 的 allowedAgents 配置格式非法");
         }
     }
 }

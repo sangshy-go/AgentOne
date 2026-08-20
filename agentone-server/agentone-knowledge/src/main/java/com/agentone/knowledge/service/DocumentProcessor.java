@@ -80,12 +80,14 @@ public class DocumentProcessor {
      */
     public void processRawContent(DocumentDO doc, KnowledgeBaseDO kb, String rawText) {
         String knowledgeId = kb.getId();
-        String strategy = kb.getChunkStrategy() != null ? kb.getChunkStrategy() : "by-length";
-        int chunkSize = kb.getChunkSize() != null ? kb.getChunkSize() : 512;
-        int overlap = kb.getChunkOverlap() != null ? kb.getChunkOverlap() : 50;
+        // 兜底默认值统一取 ChunkService 常量（与 DB 默认 400/60 一致），避免代码与 SQL 默认值分叉
+        String strategy = kb.getChunkStrategy() != null ? kb.getChunkStrategy() : ChunkService.DEFAULT_STRATEGY;
+        int chunkSize = kb.getChunkSize() != null ? kb.getChunkSize() : ChunkService.DEFAULT_CHUNK_SIZE;
+        int overlap = kb.getChunkOverlap() != null ? kb.getChunkOverlap() : ChunkService.DEFAULT_CHUNK_OVERLAP;
 
         List<String> rawChunks = chunkService.splitByStrategy(rawText, strategy, chunkSize, overlap);
-        List<String> chunks = "by-title".equals(strategy) ? rawChunks : injectHeadingContext(rawChunks);
+        List<String> chunks = ChunkService.STRATEGY_BY_TITLE.equals(strategy)
+                ? rawChunks : injectHeadingContext(rawChunks);
 
         // 分块入库
         for (int i = 0; i < chunks.size(); i++) {
@@ -123,7 +125,23 @@ public class DocumentProcessor {
                 vectorStoreService.saveBatchWithProvider(batch, provider, embeddingModel);
             }
         } catch (Exception e) {
-            log.error("向量化失败，回滚已入库的 chunk: docId={}, error={}", doc.getId(), e.getMessage(), e);
+            log.error("向量化失败，回滚已入库的 chunk 与向量: docId={}, error={}", doc.getId(), e.getMessage(), e);
+            // 先按 chunk id 删除已写入的向量，避免向量表残留孤儿向量（仅靠删 chunk 行会漏删向量）
+            try {
+                List<DocumentChunkDO> storedChunks = chunkMapper.selectList(
+                        new LambdaQueryWrapper<DocumentChunkDO>()
+                                .eq(DocumentChunkDO::getDocumentId, doc.getId()));
+                for (DocumentChunkDO c : storedChunks) {
+                    try {
+                        vectorStoreService.deleteWithProvider(c.getId(), provider, embeddingModel);
+                    } catch (Exception ex) {
+                        log.debug("回滚删除向量失败（可忽略）: chunkId={}, error={}", c.getId(), ex.getMessage());
+                    }
+                }
+            } catch (Exception ex) {
+                log.warn("查询分块用于回滚向量失败: docId={}, error={}", doc.getId(), ex.getMessage());
+            }
+            // 再删除已入库的 chunk 行
             chunkMapper.delete(
                     new LambdaQueryWrapper<DocumentChunkDO>()
                             .eq(DocumentChunkDO::getDocumentId, doc.getId())
@@ -221,11 +239,15 @@ public class DocumentProcessor {
                     : chunk.trim();
 
             // 检测 Markdown 标题（# / ## / ### / ####）
-            if (firstLine.matches("^#{1,4}\\s+.+")) {
+            boolean isHeadingChunk = firstLine.matches("^#{1,4}\\s+.+");
+            if (isHeadingChunk) {
                 currentHeading = firstLine.replaceFirst("^#+\\s*", "");
             }
 
-            if (!currentHeading.isEmpty() && !chunk.startsWith(currentHeading)) {
+            // 首个标题 chunk 本身已包含该标题（形如 "## 标题\n正文"），再前缀会得到重复的
+            // "[标题] ## 标题..."。故当本 chunk 就是定义该标题的 chunk，或其正文已以标题文本开头时，
+            // 跳过前缀，仅为不含标题的后续 chunk 注入上下文。
+            if (!currentHeading.isEmpty() && !isHeadingChunk && !chunk.startsWith(currentHeading)) {
                 result.add("[" + currentHeading + "] " + chunk);
             } else {
                 result.add(chunk);

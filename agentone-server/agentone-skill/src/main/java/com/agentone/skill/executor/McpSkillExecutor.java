@@ -1,6 +1,7 @@
 package com.agentone.skill.executor;
 
 import com.agentone.common.context.Context;
+import com.agentone.skill.core.SkillCategories;
 import com.agentone.skill.core.SkillDescriptor;
 import com.agentone.skill.core.SkillExecutor;
 import com.agentone.skill.core.SkillInvocation;
@@ -95,7 +96,11 @@ public class McpSkillExecutor implements SkillExecutor {
                         : "MCP 工具（来自 " + serverName + "）")
                 .type("mcp")
                 .source(serverName)
+                .category(SkillCategories.IT)
                 .workspaceId(workspaceId)
+                // MCP 工具默认动作型：SDK 0.9.0 的 Tool 无 annotations 可读，
+                // 副作用未知一律保守处理（待 SDK 升级后按 readOnlyHint 推断）
+                .actionType(true)
                 .inputSchema(toJsonSchemaMap(tool.inputSchema()))
                 .version("1.0.0")
                 .enabled(true)

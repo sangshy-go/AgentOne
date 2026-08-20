@@ -9,9 +9,11 @@ import com.agentone.skill.core.SkillExecutor;
 import com.agentone.skill.core.SkillRegistry;
 import com.agentone.skill.dto.McpServerDTO;
 import com.agentone.skill.entity.McpServerDO;
+import com.agentone.skill.entity.McpToolPublishDO;
 import com.agentone.skill.executor.McpSkillExecutor;
 import com.agentone.skill.mapper.AgentSkillBindingMapper;
 import com.agentone.skill.mapper.McpServerMapper;
+import com.agentone.skill.mapper.McpToolPublishMapper;
 import com.agentone.skill.mcp.McpConnectionManager;
 import com.agentone.skill.vo.McpServerVO;
 import com.agentone.skill.vo.McpToolVO;
@@ -65,6 +67,8 @@ class McpServerServiceImplTest {
     private McpConnectionManager connectionManager;
     @Spy
     private ObjectMapper objectMapper = new ObjectMapper();
+    @Mock
+    private McpToolPublishMapper mcpToolPublishMapper;
 
     @InjectMocks
     private McpServerServiceImpl mcpServerService;
@@ -199,6 +203,7 @@ class McpServerServiceImplTest {
         McpServerDTO dto = stdioDto();
         dto.setTransport("sse");
         dto.setCommand(null);
+        dto.setArgs(List.of()); // 连接参数（transport/url/command/args/headers/timeout）全一致才保持连接
         dto.setUrl("http://9.9.9.9/mcp");
         mcpServerService.update("s1", dto);
 
@@ -227,6 +232,7 @@ class McpServerServiceImplTest {
 
         verify(connectionManager).close("s1");
         verify(mcpServerMapper).deleteById("s1");
+        verify(mcpToolPublishMapper).delete(any(LambdaQueryWrapper.class));
     }
 
     // ---------- list ----------
@@ -260,6 +266,79 @@ class McpServerServiceImplTest {
         assertEquals(1, tools.size());
         assertEquals("get_weather", tools.get(0).getToolName());
         assertEquals("mcp-s1-get_weather", tools.get(0).getSkillId());
+    }
+
+    @Test
+    void listTools_marksPublishedFlagAndActionType() {
+        when(mcpServerMapper.selectById("s1")).thenReturn(server("s1", "stdio"));
+        // 真实注册时 McpSkillExecutor 描述符固定 actionType=true（SDK 无注解可读，保守处理）
+        when(skillRegistry.listDescriptors()).thenReturn(List.of(
+                SkillDescriptor.builder().id("mcp-s1-get_weather").type("mcp")
+                        .description("天气").inputSchema(Map.of("type", "object"))
+                        .actionType(true).build()));
+        McpToolPublishDO pub = new McpToolPublishDO();
+        pub.setServerId("s1");
+        pub.setToolName("get_weather");
+        pub.setPublished(true);
+        when(mcpToolPublishMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(pub));
+
+        List<McpToolVO> tools = mcpServerService.listTools("s1");
+
+        assertEquals(1, tools.size());
+        assertTrue(tools.get(0).getPublished(), "已发布工具必须带出发布状态");
+        assertTrue(tools.get(0).getActionType(), "MCP 工具默认动作型（SDK 无注解可读）");
+    }
+
+    // ---------- publishTool（工具级发布开关） ----------
+
+    @Test
+    void publishTool_firstTime_insertsRow() {
+        when(mcpServerMapper.selectById("s1")).thenReturn(server("s1", "stdio"));
+        when(mcpToolPublishMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+
+        McpToolVO vo = mcpServerService.publishTool("s1", "get_weather", true);
+
+        assertEquals("mcp-s1-get_weather", vo.getSkillId());
+        assertTrue(vo.getPublished());
+        ArgumentCaptor<McpToolPublishDO> captor = ArgumentCaptor.forClass(McpToolPublishDO.class);
+        verify(mcpToolPublishMapper).insert(captor.capture());
+        assertEquals("ws-1", captor.getValue().getWorkspaceId());
+        assertEquals("get_weather", captor.getValue().getToolName());
+        assertTrue(captor.getValue().getPublished());
+    }
+
+    @Test
+    void publishTool_existingRow_updatesInsteadOfInsert() {
+        when(mcpServerMapper.selectById("s1")).thenReturn(server("s1", "stdio"));
+        McpToolPublishDO existing = new McpToolPublishDO();
+        existing.setServerId("s1");
+        existing.setToolName("get_weather");
+        existing.setPublished(true);
+        when(mcpToolPublishMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(existing);
+
+        McpToolVO vo = mcpServerService.publishTool("s1", "get_weather", false);
+
+        assertFalse(vo.getPublished());
+        assertFalse(existing.getPublished());
+        verify(mcpToolPublishMapper).updateById(existing);
+        verify(mcpToolPublishMapper, never()).insert(any(McpToolPublishDO.class));
+    }
+
+    @Test
+    void publishTool_blankToolName_throws5010() {
+        when(mcpServerMapper.selectById("s1")).thenReturn(server("s1", "stdio"));
+        BusinessException e = assertThrows(BusinessException.class,
+                () -> mcpServerService.publishTool("s1", "  ", true));
+        assertEquals(5010, e.getCode());
+    }
+
+    @Test
+    void publishTool_serverNotFound_throws5009() {
+        when(mcpServerMapper.selectById("missing")).thenReturn(null);
+        BusinessException e = assertThrows(BusinessException.class,
+                () -> mcpServerService.publishTool("missing", "tool", true));
+        assertEquals(5009, e.getCode());
+        verify(mcpToolPublishMapper, never()).insert(any(McpToolPublishDO.class));
     }
 
     // ---------- connect ----------

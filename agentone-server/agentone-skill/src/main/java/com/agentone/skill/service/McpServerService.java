@@ -31,8 +31,14 @@ public interface McpServerService {
     /** 断开连接并注销该 Server 的全部工具 */
     void disconnect(String serverId);
 
-    /** 该 Server 当前已注册的工具（来自 Registry，不要求在线） */
+    /** 该 Server 当前已注册的工具（来自 Registry，不要求在线），带发布状态 */
     List<McpToolVO> listTools(String serverId);
+
+    /**
+     * 发布治理（Skill 中心 v2）：工具级「发布到广场」开关，默认关闭。
+     * 发布后工具才在技能广场可见、才可被 Agent 绑定；撤回后立即下线。
+     */
+    McpToolVO publishTool(String serverId, String toolName, boolean published);
 
     /** serverId 是否属于当前工作空间（供 bind 做跨租户校验） */
     boolean ownsServer(String serverId);

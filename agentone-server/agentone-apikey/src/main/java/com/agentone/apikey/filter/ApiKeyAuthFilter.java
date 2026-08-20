@@ -76,10 +76,8 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
         ctx.setEmail("apikey@" + entity.getKeyPrefix());
         RuntimeContext.set(ctx);
 
-        // 增加调用计数
-        apiKeyService.incrementUsage(entity);
-
         try {
+            // 调用计数已在 checkDailyLimit 内原子自增（通过即代表未超限）
             filterChain.doFilter(request, response);
         } finally {
             RuntimeContext.clear();

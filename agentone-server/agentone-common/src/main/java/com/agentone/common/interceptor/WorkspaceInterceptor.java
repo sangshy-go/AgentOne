@@ -36,6 +36,9 @@ public class WorkspaceInterceptor implements TenantLineHandler {
             "document_chunk",
             "chat_message",
             "task_execution_log",
+            // skill_package_file 无 workspace_id 列，经父实体 skill 的 workspace_id 间接隔离
+            // （服务层访问前一律先校验父 skill 归属，同 document/document_chunk 模式）
+            "skill_package_file",
             "flyway_schema_history",
             "model_provider",
             "model"

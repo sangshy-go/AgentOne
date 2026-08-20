@@ -3,6 +3,7 @@ package com.agentone.agent.service.impl;
 import com.agentone.agent.dto.ModelProviderDTO;
 import com.agentone.agent.mapper.AgentMapper;
 import com.agentone.agent.service.ModelProviderService;
+import com.agentone.agent.util.BaseUrlValidator;
 import com.agentone.agent.vo.ModelCheckVO;
 import com.agentone.agent.vo.ModelProviderVO;
 import com.agentone.common.context.RuntimeContext;
@@ -85,6 +86,7 @@ public class ModelProviderServiceImpl implements ModelProviderService {
         if (provider == null) {
             throw new BusinessException(7001, "模型供应商不存在");
         }
+        checkOwnership(provider);
         return toVO(provider);
     }
 
@@ -95,6 +97,7 @@ public class ModelProviderServiceImpl implements ModelProviderService {
         if (provider == null) {
             throw new BusinessException(7001, "模型供应商不存在");
         }
+        checkOwnership(provider);
         if (dto.getName() != null) provider.setName(dto.getName());
         if (dto.getProvider() != null) provider.setProvider(dto.getProvider());
         if (dto.getApiKey() != null) provider.setApiKey(dto.getApiKey());
@@ -112,6 +115,7 @@ public class ModelProviderServiceImpl implements ModelProviderService {
         if (provider == null) {
             throw new BusinessException(7001, "模型供应商不存在");
         }
+        checkOwnership(provider);
         // 解除知识库 / Agent 对该供应商的引用（跨租户，避免多租户拦截器漏清导致 FK 冲突）
         int kbCleared = knowledgeBaseMapper.clearModelProviderId(id);
         int agentCleared = agentMapper.clearModelProviderId(id);
@@ -125,6 +129,12 @@ public class ModelProviderServiceImpl implements ModelProviderService {
         if (provider == null) {
             throw new BusinessException(7001, "模型供应商不存在");
         }
+        checkOwnership(provider);
+
+        // SSRF 防护（Bug7）：baseUrl 用户可控，发起请求前校验，
+        // 拒绝内网/回环/链路本地/元数据地址。置于 try 外，让 6006 以明确错误码返回，
+        // 而不是被吞成"检测失败"的连通性结果。
+        BaseUrlValidator.validateForSsrf(provider.getBaseUrl());
 
         long start = System.currentTimeMillis();
         ModelCheckVO vo = new ModelCheckVO();
@@ -132,7 +142,13 @@ public class ModelProviderServiceImpl implements ModelProviderService {
         try {
             // 连通性检测：调用 /models 端点验证 API Key 是否有效
             String modelsUrl = provider.getBaseUrl().replaceAll("/+$", "") + "/models";
-            org.springframework.web.client.RestTemplate rest = new org.springframework.web.client.RestTemplate();
+            // 设置连接/读取超时，避免对黑洞地址无限挂起（Bug2）
+            org.springframework.http.client.SimpleClientHttpRequestFactory factory =
+                    new org.springframework.http.client.SimpleClientHttpRequestFactory();
+            factory.setConnectTimeout(5000);
+            factory.setReadTimeout(10000);
+            org.springframework.web.client.RestTemplate rest =
+                    new org.springframework.web.client.RestTemplate(factory);
             org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
             headers.setBearerAuth(provider.getApiKey());
             org.springframework.http.HttpEntity<Void> entity = new org.springframework.http.HttpEntity<>(headers);
@@ -154,9 +170,20 @@ public class ModelProviderServiceImpl implements ModelProviderService {
     /**
      * 获取原始 ModelProviderDO（内部使用，不脱敏 API Key）
      * 供 VectorStoreService 等需要实际 API Key 的模块调用
+     * 注意：调用方须自行校验 workspaceId 归属
      */
     public ModelProviderDO getRawById(String id) {
         return modelProviderMapper.selectById(id);
+    }
+
+    /**
+     * 校验模型供应商归属当前工作空间，防止跨租户越权
+     */
+    private void checkOwnership(ModelProviderDO provider) {
+        String currentWsId = RuntimeContext.getWorkspaceId();
+        if (currentWsId == null || !currentWsId.equals(provider.getWorkspaceId())) {
+            throw new BusinessException(6012, "无权访问该模型供应商");
+        }
     }
 
     private ModelProviderVO toVO(ModelProviderDO provider) {

@@ -69,8 +69,11 @@ public interface KnowledgeService {
 
     /**
      * 检索知识库
+     *
+     * @param similarityThreshold 相似度阈值（余弦相似度，0~1）；非空时过滤掉低于阈值的片段，
+     *                            避免返回无意义的负相似度"垃圾"结果。传 null 表示不过滤。
      */
-    List<SearchResultVO> search(String knowledgeId, String query, int topK);
+    List<SearchResultVO> search(String knowledgeId, String query, int topK, Double similarityThreshold);
 
     // ==================== Agent 绑定 ====================
 

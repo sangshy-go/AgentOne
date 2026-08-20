@@ -7,18 +7,25 @@ import com.agentone.skill.core.SkillInvocation;
 import com.agentone.skill.core.SkillResult;
 import com.agentone.skill.core.UrlSafetyUtil;
 import com.agentone.skill.entity.SkillDO;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
+import reactor.core.publisher.Mono;
 
+import java.net.ConnectException;
+import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeoutException;
 
 /**
  * API 模式 Skill 执行器。
@@ -29,12 +36,14 @@ import java.util.Map;
  * POST/PUT 时序列化为 JSON 请求体，GET/DELETE 时拼接为 query 参数。
  *
  * 非 Spring Bean：DB 中每个 api Skill 对应一个实例，
- * 由 ApiSkillBootstrap（启动加载）与 SkillService（增删改时）动态注册/注销。
+ * 由 UserSkillBootstrap（启动加载）与 SkillService（增删改时）动态注册/注销。
  */
 @Slf4j
 public class ApiSkillExecutor implements SkillExecutor {
 
     private static final long DEFAULT_TIMEOUT_MS = 10_000;
+    /** 错误消息中回带的响应体上限：足够定位问题又不撑爆 LLM 上下文 */
+    private static final int MAX_ERROR_BODY_CHARS = 500;
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
 
     private final SkillDO skill;
@@ -51,8 +60,8 @@ public class ApiSkillExecutor implements SkillExecutor {
     public SkillResult execute(SkillInvocation invocation, Context context) {
         long start = System.currentTimeMillis();
         try {
-            Map<String, Object> config = objectMapper.readValue(
-                    nullToEmpty(skill.getConfig()), MAP_TYPE);
+            // 生效配置 = Skill 自身 config 深合并调用侧 configOverride（Agent 绑定级覆盖）
+            Map<String, Object> config = effectiveConfig(invocation);
 
             String url = asString(config.get("url"));
             if (url == null || url.isBlank()) {
@@ -63,7 +72,7 @@ public class ApiSkillExecutor implements SkillExecutor {
 
             String method = asString(config.get("method"));
             method = (method == null || method.isBlank()) ? "POST" : method.toUpperCase();
-            long timeout = asLong(config.get("timeout"), DEFAULT_TIMEOUT_MS);
+            long timeout = resolveTimeout(invocation, config);
 
             Map<String, Object> params = invocation.getParams() != null
                     ? invocation.getParams() : Map.of();
@@ -91,25 +100,115 @@ public class ApiSkillExecutor implements SkillExecutor {
 
             ResponseEntity<String> response = spec
                     .retrieve()
+                    // 放行非 2xx：默认 toEntity() 对 4xx/5xx 抛 WebClientResponseException，
+                    // 业务错误的状态码与响应体会被吞掉，LLM 看不到真正的失败原因
+                    .onStatus(HttpStatusCode::isError, resp -> Mono.empty())
                     .toEntity(String.class)
                     .timeout(Duration.ofMillis(timeout))
                     .block();
 
+            Integer status = response != null && response.getStatusCode() != null
+                    ? response.getStatusCode().value() : null;
             Map<String, Object> data = new HashMap<>();
-            data.put("status", response.getStatusCode().value());
-            data.put("body", response.getBody());
+            data.put("status", status);
+            data.put("body", response != null ? response.getBody() : null);
             data.put("url", url);
             data.put("method", method);
+
+            if (status == null || status >= 400) {
+                // 失败也把状态码 + 响应体交给 LLM（不含目标 URL），便于其自行纠正参数
+                String message = "外部 API 调用失败: HTTP " + (status != null ? status : "无响应");
+                String body = response != null ? response.getBody() : null;
+                if (body != null && !body.isBlank()) {
+                    message = message + ", 响应: " + truncateBody(body);
+                }
+                log.warn("API Skill 返回非 2xx: id={}, status={}", skill.getId(), status);
+                return SkillResult.builder()
+                        .success(false)
+                        .data(data)
+                        .errorMessage(message)
+                        .durationMs(System.currentTimeMillis() - start)
+                        .build();
+            }
             return SkillResult.success(data, System.currentTimeMillis() - start);
         } catch (IllegalArgumentException e) {
-            // UrlSafetyUtil / JSON 解析等参数类错误
+            // UrlSafetyUtil / 参数类错误：详情只落日志，回给调用方的消息不带目标地址
             log.warn("API Skill 执行失败: id={}, error={}", skill.getId(), e.getMessage());
-            return SkillResult.failure(e.getMessage(), System.currentTimeMillis() - start);
+            return SkillResult.failure("外部 API 调用失败: 目标地址不合法或未通过安全校验",
+                    System.currentTimeMillis() - start);
         } catch (Exception e) {
-            log.error("API Skill 执行失败: id={}, error={}", skill.getId(), e.getMessage());
-            return SkillResult.failure("API Skill 调用失败: " + e.getMessage(),
+            // 同理：异常原文可能含完整 URL / 框架内部细节，只回分类后的结论
+            log.error("API Skill 执行失败: id={}, error={}", skill.getId(), e.getMessage(), e);
+            return SkillResult.failure("外部 API 调用失败: " + classify(e),
                     System.currentTimeMillis() - start);
         }
+    }
+
+    /** Skill 自身 config 与本次调用的 configOverride 深合并（覆盖侧优先） */
+    private Map<String, Object> effectiveConfig(SkillInvocation invocation) throws Exception {
+        Map<String, Object> config = objectMapper.readValue(nullToEmpty(skill.getConfig()), MAP_TYPE);
+        Map<String, Object> override = invocation != null ? invocation.getConfigOverride() : null;
+        if (override == null || override.isEmpty()) {
+            return config;
+        }
+        return deepMerge(config, override);
+    }
+
+    private static Map<String, Object> deepMerge(Map<String, Object> base,
+                                                 Map<String, Object> override) {
+        Map<String, Object> merged = new HashMap<>(base);
+        override.forEach((key, value) -> {
+            Object current = merged.get(key);
+            if (current instanceof Map<?, ?> currentMap && value instanceof Map<?, ?> overrideMap) {
+                merged.put(key, deepMerge(castMap(currentMap), castMap(overrideMap)));
+            } else {
+                merged.put(key, value);
+            }
+        });
+        return merged;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castMap(Map<?, ?> map) {
+        return (Map<String, Object>) map;
+    }
+
+    /** 超时优先级：本次调用 timeoutMs > config.timeout > 默认 10s */
+    private long resolveTimeout(SkillInvocation invocation, Map<String, Object> config) {
+        Long invocationTimeout = invocation != null ? invocation.getTimeoutMs() : null;
+        if (invocationTimeout != null && invocationTimeout > 0) {
+            return invocationTimeout;
+        }
+        return asLong(config.get("timeout"), DEFAULT_TIMEOUT_MS);
+    }
+
+    /** 异常分类：只暴露调用方能理解的结论，不带 URL、堆栈与框架细节 */
+    private String classify(Throwable e) {
+        Throwable root = e;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        if (e instanceof TimeoutException || root instanceof TimeoutException) {
+            return "请求超时";
+        }
+        if (root instanceof UnknownHostException) {
+            return "目标主机无法解析";
+        }
+        if (root instanceof ConnectException) {
+            return "无法建立连接";
+        }
+        if (e instanceof WebClientResponseException responseException) {
+            return "HTTP " + responseException.getStatusCode().value();
+        }
+        if (root instanceof JsonProcessingException) {
+            return "Skill 配置不是合法 JSON";
+        }
+        return "网络或响应异常";
+    }
+
+    private String truncateBody(String body) {
+        return body.length() <= MAX_ERROR_BODY_CHARS
+                ? body : body.substring(0, MAX_ERROR_BODY_CHARS) + "...[truncated]";
     }
 
     @Override
@@ -121,9 +220,11 @@ public class ApiSkillExecutor implements SkillExecutor {
                 .type("api")
                 .version(skill.getVersion())
                 .source(skill.getSource())
+                .category(skill.getCategory())
                 // Registry 跨租户共享，描述符携带归属空间供 test/debug 做越权校验
                 .workspaceId(skill.getWorkspaceId())
                 .enabled("active".equals(skill.getStatus()))
+                .actionType(UserSkillExecutors.isActionType(skill, objectMapper))
                 .inputSchema(parseSchema(skill.getInputSchema()))
                 .outputSchema(parseSchema(skill.getOutputSchema()))
                 .build();

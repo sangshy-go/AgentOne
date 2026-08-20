@@ -5,22 +5,20 @@ import com.agentone.skill.core.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import javax.script.ScriptEngine;
-import javax.script.ScriptEngineManager;
-import javax.script.ScriptException;
-import javax.script.SimpleBindings;
-import java.io.StringWriter;
-import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 代码执行 Skill（简化版）
- * 支持 JavaScript 代码执行（使用 Nashorn/GraalVM）
+ * 代码执行 Skill（安全桩 / 占位实现）
  *
- * ⚠️ 注意：这是简化版，生产环境应使用 Docker 沙箱隔离
+ * ⚠️ 安全说明（银行 / 国企级合规要求）：
+ *  - 进程内执行 LLM 生成的任意代码存在远程代码执行（RCE）风险（JDK 17 已移除 Nashorn，旧实现 100% 失败且不安全）。
+ *  - 本技能默认禁用（enabled=false）。即使被显式开启，也不会在进程内执行任何代码，
+ *    而是返回明确说明，避免：① JDK 17 下的崩溃；② 任意代码执行的攻击面。
+ *  - 真正可用的代码执行应通过独立 Docker 沙箱进程实现（已在路线图中规划），届时由沙箱服务接收
+ *    代码与输入、隔离执行、回收结果，本类仅作为调用入口。
  *
- * 输入参数:
- * - language: 编程语言（目前支持 javascript）
+ * 输入参数（仅做声明，不实际执行）:
+ * - language: 编程语言（目前声明支持 javascript）
  * - code: 代码内容
  * - variables: 输入变量（可选）
  */
@@ -30,78 +28,15 @@ public class CodeExecuteSkill implements SkillExecutor {
 
     private static final String SKILL_ID = "builtin-code-execute";
 
+    private static final String DISABLED_MESSAGE =
+            "代码执行技能当前为安全禁用状态：出于安全合规要求，平台不在进程内执行任意代码。"
+            + "如需启用，请先接入隔离的 Docker 沙箱执行环境（参见部署文档与路线图），由沙箱服务完成代码执行与结果回收。";
+
     @Override
     public SkillResult execute(SkillInvocation invocation, Context context) {
         long startTime = System.currentTimeMillis();
-
-        try {
-            Map<String, Object> params = invocation.getParams();
-            String language = getStringParam(params, "language", "javascript").toLowerCase();
-            String code = getStringParam(params, "code", null);
-
-            if (code == null || code.isBlank()) {
-                return SkillResult.failure("代码不能为空", System.currentTimeMillis() - startTime);
-            }
-
-            // 目前只支持 JavaScript
-            if (!"javascript".equals(language) && !"js".equals(language)) {
-                return SkillResult.failure("暂不支持 " + language + "，目前仅支持 JavaScript",
-                        System.currentTimeMillis() - startTime);
-            }
-
-            return executeJavaScript(code, params, startTime);
-
-        } catch (Exception e) {
-            log.error("代码执行失败: {}", e.getMessage());
-            return SkillResult.failure("代码执行失败: " + e.getMessage(), System.currentTimeMillis() - startTime);
-        }
-    }
-
-    private SkillResult executeJavaScript(String code, Map<String, Object> params, long startTime) {
-        ScriptEngineManager manager = new ScriptEngineManager();
-        ScriptEngine engine = manager.getEngineByName("js");
-
-        if (engine == null) {
-            // 尝试 GraalVM JavaScript
-            engine = manager.getEngineByName("graal.js");
-        }
-
-        if (engine == null) {
-            return SkillResult.failure("JavaScript 引擎不可用，请检查 JDK 版本",
-                    System.currentTimeMillis() - startTime);
-        }
-
-        try {
-            // 设置输出捕获
-            StringWriter outputWriter = new StringWriter();
-            engine.getContext().setWriter(outputWriter);
-            engine.getContext().setErrorWriter(outputWriter);
-
-            // 设置输入变量
-            @SuppressWarnings("unchecked")
-            Map<String, Object> variables = (Map<String, Object>) params.get("variables");
-            if (variables != null) {
-                SimpleBindings bindings = new SimpleBindings();
-                bindings.putAll(variables);
-                engine.setBindings(bindings, javax.script.ScriptContext.ENGINE_SCOPE);
-            }
-
-            // 执行代码
-            Object result = engine.eval(code);
-
-            // 构建返回数据
-            Map<String, Object> data = new HashMap<>();
-            data.put("result", result != null ? result.toString() : null);
-            data.put("output", outputWriter.toString());
-            data.put("language", "javascript");
-
-            return SkillResult.success(data, System.currentTimeMillis() - startTime);
-
-        } catch (ScriptException e) {
-            log.error("JavaScript 执行错误: {}", e.getMessage());
-            return SkillResult.failure("代码语法错误: " + e.getMessage(),
-                    System.currentTimeMillis() - startTime);
-        }
+        log.warn("代码执行技能被调用，但处于安全禁用状态（不执行任何代码）");
+        return SkillResult.failure(DISABLED_MESSAGE, System.currentTimeMillis() - startTime);
     }
 
     @Override
@@ -109,11 +44,12 @@ public class CodeExecuteSkill implements SkillExecutor {
         return SkillDescriptor.builder()
                 .id(SKILL_ID)
                 .name("代码执行")
-                .description("执行 JavaScript 代码（简化版，生产环境应使用 Docker 沙箱）")
+                .description("执行 JavaScript 代码（安全禁用：需接入 Docker 沙箱后方可启用）")
                 .type("builtin")
-                .version("1.0.0")
+                .version("2.0.0")
                 .source("agentone")
-                .enabled(true)
+                .category(SkillCategories.IT)
+                .enabled(false)
                 .inputSchema(Map.of(
                         "type", "object",
                         "properties", Map.of(
@@ -124,10 +60,5 @@ public class CodeExecuteSkill implements SkillExecutor {
                         "required", new String[]{"code"}
                 ))
                 .build();
-    }
-
-    private String getStringParam(Map<String, Object> params, String key, String defaultValue) {
-        Object value = params.get(key);
-        return value != null ? value.toString() : defaultValue;
     }
 }

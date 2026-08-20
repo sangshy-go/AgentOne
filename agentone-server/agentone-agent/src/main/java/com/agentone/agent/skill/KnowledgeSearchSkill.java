@@ -4,6 +4,7 @@ import com.agentone.common.context.Context;
 import com.agentone.knowledge.service.KnowledgeService;
 import com.agentone.knowledge.vo.AgentKnowledgeBindingVO;
 import com.agentone.knowledge.vo.SearchResultVO;
+import com.agentone.skill.core.SkillCategories;
 import com.agentone.skill.core.SkillDescriptor;
 import com.agentone.skill.core.SkillExecutor;
 import com.agentone.skill.core.SkillInvocation;
@@ -29,6 +30,8 @@ public class KnowledgeSearchSkill implements SkillExecutor {
 
     private static final String SKILL_ID = "builtin-knowledge-search";
     private static final int DEFAULT_TOP_K = 5;
+    private static final int MIN_TOP_K = 1;
+    private static final int MAX_TOP_K = 20;
 
     private final KnowledgeService knowledgeService;
 
@@ -51,6 +54,12 @@ public class KnowledgeSearchSkill implements SkillExecutor {
         if (topKObj instanceof Number) {
             topK = ((Number) topKObj).intValue();
         }
+        // 限制 top_k 范围，防止 LLM 传入过大值导致检索放大 / 上下文膨胀（Bug4）
+        if (topK < MIN_TOP_K) {
+            topK = MIN_TOP_K;
+        } else if (topK > MAX_TOP_K) {
+            topK = MAX_TOP_K;
+        }
 
         try {
             List<AgentKnowledgeBindingVO> bindings = knowledgeService.listBindings(context.getAgentId());
@@ -64,16 +73,10 @@ public class KnowledgeSearchSkill implements SkillExecutor {
 
             List<SearchResultVO> merged = new ArrayList<>();
             for (AgentKnowledgeBindingVO binding : bindings) {
+                // 阈值过滤下沉到知识服务（传 null 则不过滤），与 /search HTTP 入口同口径
                 List<SearchResultVO> results = knowledgeService.search(
-                        binding.getKnowledgeId(), query, topK);
-                for (SearchResultVO result : results) {
-                    if (result.getScore() != null
-                            && binding.getSimilarityThreshold() != null
-                            && result.getScore() < binding.getSimilarityThreshold()) {
-                        continue;
-                    }
-                    merged.add(result);
-                }
+                        binding.getKnowledgeId(), query, topK, binding.getSimilarityThreshold());
+                merged.addAll(results);
             }
             merged.sort((a, b) -> Double.compare(
                     b.getScore() != null ? b.getScore() : 0,
@@ -109,6 +112,7 @@ public class KnowledgeSearchSkill implements SkillExecutor {
                 .type("builtin")
                 .version("1.0.0")
                 .source("agentone")
+                .category(SkillCategories.IT)
                 .enabled(true)
                 .inputSchema(Map.of(
                         "type", "object",

@@ -34,42 +34,51 @@ public class McpConnectionManager {
     /** serverId → 活跃客户端 */
     private final Map<String, McpClientWrapper> clients = new ConcurrentHashMap<>();
 
+    /** serverId → 连接锁：保证同一 Server 同一时刻只有一个 open 在跑，
+     *  避免并发 connect 写覆盖（后写入覆盖先写入）且先前的客户端未被关闭（stdio 子进程泄漏）。 */
+    private final Map<String, Object> connectLocks = new ConcurrentHashMap<>();
+
     /**
      * 按配置构建客户端并完成协议握手（阻塞，受 timeoutMs 约束）。
      * 同一 server 重复 open 时先关闭旧连接。
      */
     public McpClientWrapper open(McpServerDO server) {
-        close(server.getId());
+        // 同一 Server 串行化 open：防止并发 connect 互相覆盖 clients 映射，
+        // 同时保证被 close 掉的旧客户端一定先完成关闭再建新连接。
+        Object lock = connectLocks.computeIfAbsent(server.getId(), k -> new Object());
+        synchronized (lock) {
+            close(server.getId());
 
-        long timeoutMs = server.getTimeoutMs() != null ? server.getTimeoutMs() : 30000L;
-        McpClientBuilder builder = McpClientBuilder.create(server.getName())
-                .timeout(Duration.ofMillis(timeoutMs))
-                .initializationTimeout(Duration.ofMillis(timeoutMs));
+            long timeoutMs = server.getTimeoutMs() != null ? server.getTimeoutMs() : 30000L;
+            McpClientBuilder builder = McpClientBuilder.create(server.getName())
+                    .timeout(Duration.ofMillis(timeoutMs))
+                    .initializationTimeout(Duration.ofMillis(timeoutMs));
 
-        switch (server.getTransport()) {
-            // env 传空 Map 而非 null：SDK 内部 new HashMap<>(env)，null 会 NPE
-            case "stdio" -> builder.stdioTransport(server.getCommand(), parseArgs(server.getArgs()), Map.of());
-            case "sse" -> {
-                builder.sseTransport(server.getUrl());
-                applyHeaders(builder, server.getHeaders());
+            switch (server.getTransport()) {
+                // env 传空 Map 而非 null：SDK 内部 new HashMap<>(env)，null 会 NPE
+                case "stdio" -> builder.stdioTransport(server.getCommand(), parseArgs(server.getArgs()), Map.of());
+                case "sse" -> {
+                    builder.sseTransport(server.getUrl());
+                    applyHeaders(builder, server.getHeaders());
+                }
+                case "streamable_http" -> {
+                    builder.streamableHttpTransport(server.getUrl());
+                    applyHeaders(builder, server.getHeaders());
+                }
+                default -> throw new IllegalArgumentException("不支持的 transport: " + server.getTransport());
             }
-            case "streamable_http" -> {
-                builder.streamableHttpTransport(server.getUrl());
-                applyHeaders(builder, server.getHeaders());
-            }
-            default -> throw new IllegalArgumentException("不支持的 transport: " + server.getTransport());
-        }
 
-        McpClientWrapper client = builder.buildSync();
-        try {
-            client.initialize().block(Duration.ofMillis(timeoutMs));
-        } catch (Exception e) {
-            // 握手失败：释放资源再抛出，避免泄漏子进程/连接
-            safeClose(client);
-            throw e;
+            McpClientWrapper client = builder.buildSync();
+            try {
+                client.initialize().block(Duration.ofMillis(timeoutMs));
+            } catch (Exception e) {
+                // 握手失败：释放资源再抛出，避免泄漏子进程/连接
+                safeClose(client);
+                throw e;
+            }
+            clients.put(server.getId(), client);
+            return client;
         }
-        clients.put(server.getId(), client);
-        return client;
     }
 
     /** 关闭并移除连接（幂等） */

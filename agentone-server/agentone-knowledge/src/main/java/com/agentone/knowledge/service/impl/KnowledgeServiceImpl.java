@@ -23,20 +23,28 @@ import com.agentone.knowledge.vo.AgentKnowledgeBindingVO;
 import com.agentone.knowledge.vo.DocumentVO;
 import com.agentone.knowledge.vo.KnowledgeBaseVO;
 import com.agentone.knowledge.vo.SearchResultVO;
+import com.agentone.knowledge.chunk.ChunkService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.agentone.common.result.PageResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.tika.Tika;
 import org.springframework.beans.BeanUtils;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
+import jakarta.annotation.PostConstruct;
+
+import java.io.IOException;
+import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -48,9 +56,29 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class KnowledgeServiceImpl implements KnowledgeService {
 
-    /** 允许上传的文档类型白名单（与 DocumentParser 支持范围、前端 accept 保持一致） */
+    /**
+     * 允许上传的文档类型白名单（与 DocumentParser 支持范围保持一致）。
+     *
+     * P3 安全决策：移除 html。html 会被原样解析入库，若前端某处以富文本方式渲染检索片段，
+     * 即形成存储型 XSS 的输入通道；知识库场景对 html 的需求可由 md / txt 覆盖，
+     * 因此选择"直接拒绝 html 上传"（最小代价、无渲染侧改造风险）。
+     * csv 保留：其内容经 Tika 解析为纯文本后入库，不含可执行标记。
+     */
     private static final Set<String> ALLOWED_DOC_TYPES =
-            Set.of("txt", "md", "pdf", "doc", "docx", "html", "csv");
+            Set.of("txt", "md", "pdf", "doc", "docx", "csv");
+
+    /**
+     * 内容嗅探拒绝的 MIME 前缀：仅靠扩展名白名单可被绕过
+     * （如把 html 改名为 a.txt / a.csv 上传），故再按魔数/内容嗅探真实 MIME 拦一道。
+     */
+    private static final Set<String> BLOCKED_MIME_TYPES = Set.of(
+            "text/html", "application/xhtml+xml", "image/svg+xml");
+
+    /** Tika 内容类型嗅探器（线程安全，仅用于 detect，不做解析） */
+    private static final Tika CONTENT_DETECTOR = new Tika();
+
+    /** topK 上限：防止单次检索拉取超大结果集拖垮 DB / 内存 */
+    private static final int MAX_TOP_K = 20;
 
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final DocumentMapper documentMapper;
@@ -73,9 +101,10 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         kb.setChunkCount(0);
         kb.setEmbeddingModel(dto.getEmbeddingModel() != null ? dto.getEmbeddingModel() : "text-embedding-3-small");
         kb.setEmbeddingModelId(dto.getEmbeddingModelId());
-        kb.setChunkStrategy(dto.getChunkStrategy() != null ? dto.getChunkStrategy() : "by-length");
-        kb.setChunkSize(dto.getChunkSize() != null ? dto.getChunkSize() : 512);
-        kb.setChunkOverlap(dto.getChunkOverlap() != null ? dto.getChunkOverlap() : 50);
+        // 默认分块参数统一取 ChunkService 常量（400/60），与 DB 默认值一致，避免代码与 SQL 分叉
+        kb.setChunkStrategy(dto.getChunkStrategy() != null ? dto.getChunkStrategy() : ChunkService.DEFAULT_STRATEGY);
+        kb.setChunkSize(dto.getChunkSize() != null ? dto.getChunkSize() : ChunkService.DEFAULT_CHUNK_SIZE);
+        kb.setChunkOverlap(dto.getChunkOverlap() != null ? dto.getChunkOverlap() : ChunkService.DEFAULT_CHUNK_OVERLAP);
         kb.setCreatedAt(LocalDateTime.now());
 
         knowledgeBaseMapper.insert(kb);
@@ -136,6 +165,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                         .eq(AgentKnowledgeBindingDO::getKnowledgeId, id)
         );
         // 2. 删除关联文档和分块
+        // 注意：若库内仍有 processing 文档，deleteDocument 会抛错阻止整库删除，
+        // 这是有意为之——避免异步写入线程在库删除后产生孤儿分块/向量。
         List<DocumentDO> docs = documentMapper.selectList(
                 new LambdaQueryWrapper<DocumentDO>().eq(DocumentDO::getKnowledgeId, id)
         );
@@ -155,21 +186,38 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             throw new BusinessException(6001, "知识库不存在");
         }
 
-        // F4: 文件类型白名单校验，先挡掉非法类型，避免进入解析流程
-        String type = getFileType(file.getOriginalFilename());
-        if (!ALLOWED_DOC_TYPES.contains(type)) {
-            throw new BusinessException(6009, "不支持的文件类型：" + (type.isEmpty() ? "未知" : type)
-                    + "，仅支持 txt / md / pdf / doc / docx / html / csv");
+        // F7: 文件名校验与截断，避免 null/空 或超长（>200）导致 500
+        String originalName = file.getOriginalFilename();
+        if (originalName == null || originalName.isBlank()) {
+            throw new BusinessException(6011, "文件名不能为空");
+        }
+        if (originalName.length() > 200) {
+            originalName = originalName.substring(0, 200);
+            log.warn("文件名超过 200 字符，已截断: knowledgeId={}", knowledgeId);
         }
 
-        // B10: 重复上传检测（同知识库下 文件名+大小 相同视为重复，避免重复向量与费用浪费）
+        // F4: 文件类型白名单校验，先挡掉非法类型，避免进入解析流程
+        String type = getFileType(originalName);
+        if (!ALLOWED_DOC_TYPES.contains(type)) {
+            throw new BusinessException(6009, "不支持的文件类型：" + (type.isEmpty() ? "未知" : type)
+                    + "，仅支持 txt / md / pdf / doc / docx / csv");
+        }
+
+        // P3: 扩展名白名单可被改名绕过，再按魔数/内容嗅探真实 MIME，拒绝 html/xml/svg 等可承载脚本的内容
+        verifyContentType(file, originalName);
+
+        // B10: 重复上传检测（同知识库下 文件名+大小 相同视为重复，避免重复向量与费用浪费）。
+        // 注意：此处 selectCount 只是"快速失败 + 友好提示"，与下方 insert 之间并不原子；
+        // 真正的并发互斥依赖 DB 唯一索引 uk_document_kb_name_size(knowledge_id, name, size)，
+        // 冲突时由 insert 抛 DuplicateKeyException 兜底（见下方 catch），
+        // 避免并发重复上传产生重复分块 / 重复向量与 Embedding 费用浪费。
         Long dupCount = documentMapper.selectCount(
                 new LambdaQueryWrapper<DocumentDO>()
                         .eq(DocumentDO::getKnowledgeId, knowledgeId)
-                        .eq(DocumentDO::getName, file.getOriginalFilename())
+                        .eq(DocumentDO::getName, originalName)
                         .eq(DocumentDO::getSize, file.getSize()));
         if (dupCount != null && dupCount > 0) {
-            throw new BusinessException(6010, "该知识库已存在相同文档，请勿重复上传：" + file.getOriginalFilename());
+            throw new BusinessException(6010, "该知识库已存在相同文档，请勿重复上传：" + originalName);
         }
 
         // 前置校验：Embedding 模型必须配置，避免创建无效文档记录
@@ -178,21 +226,27 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         // 创建文档记录
         DocumentDO doc = new DocumentDO();
         doc.setKnowledgeId(knowledgeId);
-        doc.setName(file.getOriginalFilename());
+        doc.setName(originalName);
         doc.setType(type);
         doc.setSize(file.getSize());
         doc.setChunkCount(0);
         doc.setStatus("processing");
         doc.setCreatedAt(LocalDateTime.now());
-        documentMapper.insert(doc);
+        try {
+            documentMapper.insert(doc);
+        } catch (DuplicateKeyException e) {
+            // 并发重复上传：DB 唯一索引兜底拦截，转为与前置检查一致的业务错误
+            throw new BusinessException(6010, "该知识库已存在相同文档，请勿重复上传：" + originalName);
+        }
 
         // 重算知识库统计（从 DB 计数，避免应用层累加漂移）
         recomputeKbCounts(kb);
 
-        // 同步解析文档：MultipartFile 仅在请求线程内有效，必须在异步处理前完成解析并落库
+        // 同步解析文档：MultipartFile 仅在请求线程内有效，必须在异步处理前完成解析并落库。
+        // P3: 用 try-with-resources 关闭输入流，避免临时文件句柄泄漏。
         String text;
-        try {
-            text = documentParser.parse(file.getInputStream(), doc.getType());
+        try (InputStream in = file.getInputStream()) {
+            text = documentParser.parse(in, doc.getType());
         } catch (Exception e) {
             log.error("文档解析失败: docId={}, error={}", doc.getId(), e.getMessage(), e);
             markUploadError(doc, e.getMessage() != null ? e.getMessage() : "文档解析失败");
@@ -215,6 +269,13 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
     @Override
     public PageResult<DocumentVO> listDocuments(String knowledgeId, Integer page, Integer size) {
+        // 越权防护：knowledge_base 不在租户白名单，selectById 自动过滤 workspace_id；
+        // 若 KB 不属于当前工作空间则返回 null，阻止跨租户列举文档。
+        KnowledgeBaseDO kb = knowledgeBaseMapper.selectById(knowledgeId);
+        if (kb == null) {
+            throw new BusinessException(6001, "知识库不存在");
+        }
+
         Page<DocumentDO> p = new Page<>(page, size);
         Page<DocumentDO> result = documentMapper.selectPage(p,
                 new LambdaQueryWrapper<DocumentDO>()
@@ -232,18 +293,21 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         if (doc == null) {
             throw new BusinessException(6003, "文档不存在");
         }
-        if (!"error".equals(doc.getStatus())) {
-            throw new BusinessException(6005, "只能重试处理失败的文档");
+
+        // 越权防护：document 在租户白名单，需通过其所属 knowledge_base 反查校验归属。
+        // 放在状态检查之前，避免向非授权用户泄露文档状态信息。
+        KnowledgeBaseDO kb = knowledgeBaseMapper.selectById(doc.getKnowledgeId());
+        if (kb == null) {
+            throw new BusinessException(6001, "知识库不存在");
+        }
+
+        if (!"error".equals(doc.getStatus()) && !"processing".equals(doc.getStatus())) {
+            throw new BusinessException(6005, "只能重试处理失败或处理中的文档");
         }
 
         String rawText = doc.getRawContent();
         if (rawText == null || rawText.isBlank()) {
             throw new BusinessException(6006, "原文内容为空（可能是解析阶段失败），请重新上传文档");
-        }
-
-        KnowledgeBaseDO kb = knowledgeBaseMapper.selectById(doc.getKnowledgeId());
-        if (kb == null) {
-            throw new BusinessException(6001, "知识库不存在");
         }
 
         // 清理旧的分块和向量（避免重复累加）
@@ -300,6 +364,20 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             throw new BusinessException(6003, "文档不存在");
         }
 
+        // 越权防护：document 在租户白名单，需通过其所属 knowledge_base 反查校验归属。
+        // 若 KB 不属于当前工作空间，selectById 自动过滤后返回 null，阻止跨租户删除。
+        KnowledgeBaseDO docKb = knowledgeBaseMapper.selectById(doc.getKnowledgeId());
+        if (docKb == null) {
+            throw new BusinessException(6001, "知识库不存在");
+        }
+
+        // P3: 上传后立即删除的竞态——异步分块/向量化线程仍在写入 document_chunk 与向量表，
+        // 此时删除会留下孤儿分块与孤儿向量（删除已完成后异步线程才写入）。
+        // 处理中一律拒绝删除，让调用方等处理结束（或 30 分钟后由启动恢复/超时置为 error）再删。
+        if ("processing".equals(doc.getStatus())) {
+            throw new BusinessException(6014, "文档正在处理中，请等待处理完成后再删除：" + doc.getName());
+        }
+
         // 先查询分块（用于从向量数据库删除）
         List<DocumentChunkDO> chunks = chunkMapper.selectList(
                 new LambdaQueryWrapper<DocumentChunkDO>()
@@ -307,17 +385,14 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         );
 
         // 从向量数据库删除：best-effort，模型配置缺失时跳过向量删除，但始终清理 DB 记录
-        KnowledgeBaseDO docKb = knowledgeBaseMapper.selectById(doc.getKnowledgeId());
-        if (docKb != null) {
-            try {
-                ModelDO embeddingModel = documentProcessor.resolveEmbeddingModel(docKb.getEmbeddingModelId());
-                ModelProviderDO provider = documentProcessor.resolveProvider(embeddingModel);
-                for (DocumentChunkDO chunk : chunks) {
-                    vectorStoreService.deleteWithProvider(chunk.getId(), provider, embeddingModel);
-                }
-            } catch (BusinessException e) {
-                log.warn("删除文档时无法清理向量数据（模型配置缺失）: docId={}, reason={}", documentId, e.getMessage());
+        try {
+            ModelDO embeddingModel = documentProcessor.resolveEmbeddingModel(docKb.getEmbeddingModelId());
+            ModelProviderDO provider = documentProcessor.resolveProvider(embeddingModel);
+            for (DocumentChunkDO chunk : chunks) {
+                vectorStoreService.deleteWithProvider(chunk.getId(), provider, embeddingModel);
             }
+        } catch (BusinessException e) {
+            log.warn("删除文档时无法清理向量数据（模型配置缺失）: docId={}, reason={}", documentId, e.getMessage());
         }
 
         // 删除分块记录
@@ -330,15 +405,13 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         documentMapper.deleteById(documentId);
 
         // 重算知识库统计（文档记录已删除，从 DB 计数）
-        if (docKb != null) {
-            recomputeKbCounts(docKb);
-        }
+        recomputeKbCounts(docKb);
     }
 
     // ==================== 检索 ====================
 
     @Override
-    public List<SearchResultVO> search(String knowledgeId, String query, int topK) {
+    public List<SearchResultVO> search(String knowledgeId, String query, int topK, Double similarityThreshold) {
         // 1. 向量检索（使用知识库关联的 embedding 模型 → provider）
         KnowledgeBaseDO kb = knowledgeBaseMapper.selectById(knowledgeId);
         if (kb == null) {
@@ -347,9 +420,19 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         ModelDO embeddingModel = documentProcessor.resolveEmbeddingModel(kb.getEmbeddingModelId());
         ModelProviderDO provider = documentProcessor.resolveProvider(embeddingModel);
 
-        List<VectorSearchResult> results = vectorStoreService.searchWithProvider(query, topK, provider, embeddingModel, knowledgeId);
+        // P3: topK 收敛到 [1, MAX_TOP_K]。除 HTTP 入口外，Agent 绑定配置（binding.topK）也会传入，
+        // 故在服务层统一兜底，避免超大 topK 拉取海量向量拖垮 DB / 内存。
+        int safeTopK = Math.max(1, Math.min(topK, MAX_TOP_K));
+        List<VectorSearchResult> results = vectorStoreService.searchWithProvider(query, safeTopK, provider, embeddingModel, knowledgeId);
 
-        // 2. 转换为 VO
+        // 2. 应用相似度阈值：未传则不过滤；传了则丢弃低于阈值的片段，避免返回无相关性的"垃圾"结果
+        if (similarityThreshold != null) {
+            results = results.stream()
+                    .filter(r -> r.getScore() != null && r.getScore() >= similarityThreshold)
+                    .collect(Collectors.toList());
+        }
+
+        // 3. 转换为 VO
         return results.stream().map(r -> {
             DocumentChunkDO chunk = chunkMapper.selectById(r.getChunkId());
             if (chunk == null) return null;
@@ -379,7 +462,9 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             throw new BusinessException(6001, "知识库不存在");
         }
         String wsId = RuntimeContext.getWorkspaceId();
-        if (!wsId.equals(kb.getWorkspaceId())) {
+        // P3: 非 Web 上下文（定时任务 / 异步线程）下 wsId 可能为 null，直接 wsId.equals(...) 会 NPE，
+        // 改用 Objects.equals 做 null 安全比较（null 与任意非 null workspace 视为不相等 → 拒绝）
+        if (!Objects.equals(wsId, kb.getWorkspaceId())) {
             throw new BusinessException(4003, "无权绑定其他工作空间的知识库");
         }
 
@@ -426,7 +511,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         if (binding == null) {
             throw new BusinessException(6007, "绑定关系不存在");
         }
-        if (!RuntimeContext.getWorkspaceId().equals(binding.getWorkspaceId())) {
+        // P3: wsId 可能为 null（非 Web 上下文），用 Objects.equals 避免 NPE
+        if (!Objects.equals(RuntimeContext.getWorkspaceId(), binding.getWorkspaceId())) {
             throw new BusinessException(4003, "无权操作该绑定关系");
         }
         bindingMapper.deleteById(bindingId);
@@ -456,7 +542,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         if (kb == null) {
             throw new BusinessException(6001, "知识库不存在");
         }
-        if (!RuntimeContext.getWorkspaceId().equals(kb.getWorkspaceId())) {
+        // P3: wsId 可能为 null（非 Web 上下文），用 Objects.equals 避免 NPE
+        if (!Objects.equals(RuntimeContext.getWorkspaceId(), kb.getWorkspaceId())) {
             throw new BusinessException(4003, "无权访问该知识库的绑定");
         }
         List<AgentKnowledgeBindingDO> bindings = bindingMapper.selectList(
@@ -473,6 +560,28 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         int lastDot = filename.lastIndexOf(".");
         if (lastDot < 0) return "unknown";
         return filename.substring(lastDot + 1).toLowerCase();
+    }
+
+    /**
+     * 基于内容嗅探（魔数/结构）校验真实 MIME，拒绝可承载脚本的类型（html/xml/svg）。
+     *
+     * 仅靠扩展名白名单，攻击者可将 evil.html 改名为 evil.txt / evil.csv 绕过，导致 html 正文入库，
+     * 若前端某处富文本渲染检索片段即形成存储型 XSS。此处用 Tika 探测实际内容类型再拦一道。
+     * 嗅探失败（IO 异常等）不阻断上传，交由后续解析流程处理，避免误伤正常文档。
+     */
+    private void verifyContentType(MultipartFile file, String originalName) {
+        try (InputStream in = file.getInputStream()) {
+            String detected = CONTENT_DETECTOR.detect(in, originalName);
+            if (detected != null) {
+                String mime = detected.split(";")[0].trim().toLowerCase();
+                if (BLOCKED_MIME_TYPES.contains(mime)) {
+                    throw new BusinessException(6009,
+                            "文件内容类型不被允许（检测为 " + mime + "），出于安全考虑已拒绝上传");
+                }
+            }
+        } catch (IOException e) {
+            log.warn("内容类型嗅探失败，跳过内容校验: file={}, error={}", originalName, e.getMessage());
+        }
     }
 
     /**
@@ -510,6 +619,31 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             });
         } else {
             documentProcessor.processAsync(documentId, knowledgeId);
+        }
+    }
+
+    /**
+     * 启动恢复：重置卡在 processing 的文档（进程崩溃后无人重试，永久卡死）。
+     * 仅处理 createdAt 超过阈值（默认 30 分钟）的文档，避免误伤正在处理的正常任务。
+     */
+    @PostConstruct
+    public void recoverStuckDocuments() {
+        try {
+            List<DocumentDO> stuck = documentMapper.selectList(
+                    new LambdaQueryWrapper<DocumentDO>()
+                            .eq(DocumentDO::getStatus, "processing")
+                            .lt(DocumentDO::getCreatedAt, LocalDateTime.now().minusMinutes(30)));
+            if (stuck.isEmpty()) {
+                return;
+            }
+            for (DocumentDO d : stuck) {
+                d.setStatus("error");
+                d.setErrorMsg("处理超时（可能由进程崩溃导致），已重置为可重试状态");
+                documentMapper.updateById(d);
+            }
+            log.info("启动恢复：将 {} 个卡在 processing 的文档重置为 error 状态", stuck.size());
+        } catch (Exception e) {
+            log.warn("启动恢复卡死文档失败（不影响启动）: {}", e.getMessage());
         }
     }
 

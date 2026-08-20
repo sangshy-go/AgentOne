@@ -3,6 +3,7 @@ package com.agentone.skill.controller;
 import com.agentone.common.result.PageResult;
 import com.agentone.common.result.Result;
 import com.agentone.skill.dto.McpServerDTO;
+import com.agentone.skill.dto.PublishToolDTO;
 import com.agentone.skill.service.McpServerService;
 import com.agentone.skill.vo.McpServerVO;
 import com.agentone.skill.vo.McpToolVO;
@@ -84,10 +85,21 @@ public class McpServerController {
     }
 
     /**
-     * 该 Server 当前已注册的工具（来自 Registry，不要求在线）
+     * 该 Server 当前已注册的工具（来自 Registry，不要求在线），带发布状态
      */
     @GetMapping("/{serverId}/tools")
     public Result<List<McpToolVO>> listTools(@PathVariable String serverId) {
         return Result.ok(mcpServerService.listTools(serverId));
+    }
+
+    /**
+     * 工具级「发布到广场」开关（Skill 中心 v2 治理，默认关闭）。
+     * 发布后工具才在技能广场可见、才可被 Agent 绑定启用。
+     */
+    @PutMapping("/{serverId}/tools/{toolName}/publish")
+    public Result<McpToolVO> publishTool(@PathVariable String serverId,
+                                         @PathVariable String toolName,
+                                         @Valid @RequestBody PublishToolDTO dto) {
+        return Result.ok(mcpServerService.publishTool(serverId, toolName, dto.getPublished()));
     }
 }

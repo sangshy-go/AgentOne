@@ -11,6 +11,8 @@ import com.agentone.knowledge.vo.ModelVO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.agentone.common.result.PageResult;
+import com.agentone.common.context.RuntimeContext;
+import com.agentone.knowledge.vector.VectorStoreService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -31,6 +33,7 @@ public class ModelServiceImpl implements ModelService {
 
     private final ModelMapper modelMapper;
     private final ModelProviderMapper providerMapper;
+    private final VectorStoreService vectorStoreService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -41,6 +44,13 @@ public class ModelServiceImpl implements ModelService {
             throw new BusinessException(6001, "模型供应商不存在");
         }
 
+        // S9: 校验 provider 归属当前工作空间（model_provider 不在租户白名单，需手动校验）
+        String wsId = RuntimeContext.getWorkspaceId();
+        if (wsId != null && provider.getWorkspaceId() != null
+                && !wsId.equals(provider.getWorkspaceId())) {
+            throw new BusinessException(6013, "无权在该模型供应商下创建模型");
+        }
+
         ModelDO model = new ModelDO();
         model.setProviderId(providerId);
         model.setModelType(dto.getModelType());
@@ -48,14 +58,24 @@ public class ModelServiceImpl implements ModelService {
         model.setDisplayName(dto.getDisplayName() != null ? dto.getDisplayName() : dto.getModelId());
         model.setContextSize(dto.getContextSize());
         model.setMaxTokens(dto.getMaxTokens());
-        model.setDimensions(dto.getDimensions());
+        // D1: 不持久化用户传入的未校验 dimensions——错误的维度会让该模型后续所有文档向量化失败。
+        // embedding 类型在创建时主动探测真实维度并写入；其它类型维度恒为 null（由系统首次使用时解析）。
+        if ("embedding".equals(dto.getModelType())) {
+            try {
+                int dims = vectorStoreService.probeEmbeddingDimensions(provider, model);
+                model.setDimensions(dims);
+            } catch (Exception e) {
+                log.warn("创建 embedding 模型时探测维度失败，留待首次使用时解析: providerId={}, modelId={}, error={}",
+                        providerId, dto.getModelId(), e.getMessage());
+            }
+        }
         model.setStatus("active");
         model.setCreatedAt(LocalDateTime.now());
         model.setUpdatedAt(LocalDateTime.now());
 
         modelMapper.insert(model);
         log.info("创建模型成功: providerId={}, modelType={}, modelId={}, dimensions={}",
-                providerId, dto.getModelType(), dto.getModelId(), dto.getDimensions());
+                providerId, dto.getModelType(), dto.getModelId(), model.getDimensions());
 
         return toModelVO(model, provider.getName());
     }
@@ -100,14 +120,18 @@ public class ModelServiceImpl implements ModelService {
             throw new BusinessException(6002, "模型不存在");
         }
 
+        // S9: 校验模型所属 provider 归属当前工作空间（model_provider 不在租户白名单，需手动校验）
+        verifyProviderOwnership(model.getProviderId());
+
         model.setModelType(dto.getModelType());
         model.setModelId(dto.getModelId());
         model.setDisplayName(dto.getDisplayName() != null ? dto.getDisplayName() : dto.getModelId());
         model.setContextSize(dto.getContextSize());
         model.setMaxTokens(dto.getMaxTokens());
-        if (dto.getDimensions() != null) {
-            model.setDimensions(dto.getDimensions());
-        }
+        // dimensions 为系统首次使用时自动探测的只读字段，更新时忽略客户端传入值：
+        // embedding 模型维度决定向量表（vector_{dimensions}），若在更新时篡改，已入库向量与
+        // 后续查询向量将处于不同维度空间，导致检索失效、历史向量沦为孤儿。保持与创建时 /
+        // 自动探测值一致，如需更换维度请新建模型并在知识库侧重新绑定（知识库 embedding 模型本身不可变）。
         model.setUpdatedAt(LocalDateTime.now());
 
         modelMapper.updateById(model);
@@ -125,6 +149,10 @@ public class ModelServiceImpl implements ModelService {
         if (model == null) {
             throw new BusinessException(6002, "模型不存在");
         }
+
+        // S9: 校验模型所属 provider 归属当前工作空间（model_provider 不在租户白名单，需手动校验）
+        verifyProviderOwnership(model.getProviderId());
+
         modelMapper.deleteById(modelId);
         log.info("删除模型成功: modelId={}", modelId);
     }
@@ -162,6 +190,20 @@ public class ModelServiceImpl implements ModelService {
                     return toModelVO(m, providerName);
                 })
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * S9: 校验模型所属 provider 归属于当前工作空间。
+     * model / model_provider 是白名单表，租户拦截器不会自动过滤，必须手动校验归属，
+     * 否则可越权操作他人空间的模型。
+     */
+    private void verifyProviderOwnership(String providerId) {
+        ModelProviderDO provider = providerMapper.selectById(providerId);
+        String wsId = RuntimeContext.getWorkspaceId();
+        if (provider == null || (wsId != null && provider.getWorkspaceId() != null
+                && !wsId.equals(provider.getWorkspaceId()))) {
+            throw new BusinessException(6013, "无权操作该模型（供应商不存在或不属于当前工作空间）");
+        }
     }
 
     private ModelVO toModelVO(ModelDO model, String providerName) {
