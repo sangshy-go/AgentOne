@@ -1,7 +1,7 @@
 # REST API 参考
 
 > Base URL：`http://localhost:8080`（Docker 部署见 `.env` 的 `API_PORT`）
-> 共 13 个 Controller、约 80 个端点。流式对话协议见 [sse-protocol.md](sse-protocol.md)。
+> 共 16 个 Controller、约 88 个端点。流式对话协议见 [sse-protocol.md](sse-protocol.md)。
 
 ## 通用约定
 
@@ -22,6 +22,18 @@
 | `/v1/health` | 无需认证 | — |
 
 JWT 中携带 `userId` 与 `workspaceId`，切换工作空间后 Cookie 重新签发。所有业务数据按 `workspace_id` 隔离（MyBatis 租户拦截器自动注入）。
+
+### RBAC 角色（课题⑥）
+
+角色四值：`owner` / `admin` / `developer` / `observer`（存 `user_workspace.role`，V21 迁移清洗旧 `member` → `developer` 并加 CHECK 约束）。HTTP 层由 `WorkspaceRbacFilter`（@Order(2)，排 JwtAuthFilter 后）统一强制，**每请求从 DB 取角色，改角色即时生效无需重登录**：
+
+| 规则 | 拦截码 |
+|------|--------|
+| 非当前工作空间成员访问 `/api/**` | 2002 |
+| `observer` 发起写请求（POST/PUT/DELETE/PATCH） | 2004 |
+| 非 admin/owner 访问 `/api/members/**` | 2003 |
+
+白名单跳过检查：`/api/auth/`、`/api/workspaces`、`/v1/*`、`/actuator`、`/error`。"API 用户"不是控制台角色，指 API Key 程序接入（§11/§12）。
 
 ### 认证 VO（AuthVO）
 
@@ -95,8 +107,19 @@ JWT 中携带 `userId` 与 `workspaceId`，切换工作空间后 Cookie 重新�
 | GET | `/api/chat/sessions/{sessionId}/messages` | 会话消息列表 |
 | PUT | `/api/chat/sessions/{sessionId}/rename` | 重命名（body：`{title*}`，≤100 字） |
 | DELETE | `/api/chat/sessions/{sessionId}` | 删除会话（连同消息） |
+| POST | `/api/chat/attachments` | 上传附件（multipart `file`）→ `{id,kind,fileName,mimeType,fileSize}` |
+| GET | `/api/chat/attachments/{id}` | 附件字节流（Content-Disposition: inline） |
 
-**ChatRequestDTO**：`{agentId*, message*, sessionId?, stream?}`
+**ChatRequestDTO**：`{agentId*, message?, attachmentIds?, sessionId?, stream?}`
+`message` 与 `attachmentIds` 至少其一。
+
+**附件**：
+- 图片：png/jpg/jpeg/webp/gif ≤10MB；文档：pdf/docx/txt/md/csv ≤20MB
+- 后端 Tika 嗅探 MIME（防扩展名伪装），拒绝 `text/html`、`application/xhtml+xml`、`image/svg+xml`
+- 文档即时解析入库 `parsed_text`（≤200k 字符）；发送时按 `agentone.chat.attachment-max-tokens`（默认 6000）截断后注入 prompt
+- 图片走 `ImageBlock(Base64Source)` 多模态通道，需 Agent 绑定视觉模型（如 qwen-vl 系列）
+- API Key 调用（/v1/chat）不支持附件，返回 4015
+- 删除会话时级联删除所属附件
 
 ## 5. 模型供应商 `/api/model-providers`（JWT）
 
@@ -210,6 +233,33 @@ Skill 列表为**合并视图**：内置（builtin，虚拟挂载）+ 用户 Ski
 | POST | `/v1/chat/stream` | X-API-Key | 流式对话（SSE） |
 | GET | `/v1/health` | 无 | 健康检查 → `data: {status:"UP", database:{status,type}, redis:{status,type}}`（同统一 Result 包装） |
 
+## 13. 成员管理 `/api/members`（Cookie，仅 admin/owner）
+
+管理员门禁由 `WorkspaceRbacFilter` 统一拦截（非 admin/owner → 2003），Controller 不重复校验。
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/members?current&size` | 成员分页列表 → `{userId, email, nickname, role, joinedAt}` |
+| POST | `/api/members` | 添加成员 `{email*, role*}`；role 限 `admin`/`developer`/`observer`（owner 不可授予）；按邮箱添加**已注册**用户，无邀请流程 |
+| PUT | `/api/members/{userId}` | 变更角色 `{role*}`；禁止改 owner 行 |
+| DELETE | `/api/members/{userId}` | 移除成员；禁止移除 owner、禁止移除自己 |
+
+## 14. 监控 `/api/monitor`（Cookie）
+
+数据底座零新埋点：复用对话链路已写入的 `chat_session` / `chat_message` / `skill_call_log`（session_id 串联）。
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/monitor/sessions?agentId&keyword&current&size` | 全工作空间会话分页 → `{id, title, agentId, agentName, userEmail, messageCount, tokenCount, createdAt, updatedAt}` |
+| GET | `/api/monitor/sessions/{id}/timeline` | 会话时间线 → `{session, items[]}`；items = 消息 + Skill 调用按 createdAt 归并，`kind=message`（含 role/content）或 `kind=skill_call`（含 skillName/status/errorMessage/durationMs）。**chat_message 无租户列**：先查会话验归属再查消息（4004 会话不存在） |
+| GET | `/api/monitor/skill-calls?agentId&skillId&status&current&size` | Skill 调用记录分页 → `{id, agentId, agentName, skillId, skillName, sessionId, status, errorMessage, durationMs, tokenCount, createdAt}` |
+
+## 15. 仪表盘 `/api/dashboard`（Cookie）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/dashboard/stats` | `{agentCount, knowledgeCount, todayChatCount, activeUsers7d, dailyChats:[{statDate, statCount}×7 缺日补0升序], recentAgents:[{id,name,category,updatedAt}×5]}` |
+
 ---
 
 ## 错误码
@@ -228,13 +278,28 @@ Skill 列表为**合并视图**：内置（builtin，虚拟挂载）+ 用户 Ski
 | 1004 | Token 无效或已过期 |
 | 1005 | 用户不存在 |
 | 2001 | 工作空间不存在 / API Key 不存在 |
-| 2002 | 无权访问该工作空间 |
+| 2002 | 无权访问该工作空间（非成员） |
+| 2003 | 仅 admin/owner 可操作（成员管理 / 修改或删除工作空间） |
+| 2004 | observer 角色为只读，不允许写操作 |
+| 2005 | 无效的角色（可授予：admin / developer / observer） |
+| 2006 | 邮箱未注册（添加成员时） |
+| 2007 | 该用户已是工作空间成员 |
+| 2008 | 不能变更所有者角色 / 不能移除所有者 |
+| 2009 | 不能移除自己 |
+| 2010 | 该用户不是工作空间成员 |
 | 3001 | Agent 不存在 |
 | 3002 | 已发布的 Agent 不能直接修改，请先退回草稿 |
 | 3003 | Agent 已停用，无法对话 |
 | 3004 | 当前状态不允许该操作（状态机约束） |
 | 4002 | 会话不存在 |
 | 4003 | 无权访问该会话 |
+| 4004 | 会话不存在（监控时间线，含跨租户拦截） |
+| 4010 | 附件不存在 |
+| 4011 | 无权访问该附件（跨工作空间/用户） |
+| 4012 | 文件类型不允许（扩展名或 MIME 嗅探拒绝） |
+| 4013 | 文件超过大小限制 |
+| 4014 | 文档解析失败 |
+| 4015 | API Key 调用不支持附件，请使用 /api 路径 |
 | 5001 | Agent 已绑定此 Skill |
 | 5002 | Skill 不存在（含不可调试） |
 | 5003 | Skill 绑定记录不存在 |
@@ -263,4 +328,10 @@ Skill 列表为**合并视图**：内置（builtin，虚拟挂载）+ 用户 Ski
 | 6010 | 重复文档（同名同大小） |
 | 6011 | Chat 模型关联的服务商配置不存在 |
 | 6012 | 当前工作空间无权使用该模型供应商（跨租户模型保护） |
+| 6013 | 无权操作该模型 / 在该供应商下创建模型（跨工作空间模型保护） |
+| 6014 | 文档正在处理中，请等待处理完成后再删除 |
+| 6015 | Embedding 模型不可用（创建/修改时维度探测失败，携带根因，请核对模型 ID 与 Base URL） |
+| 6016 | Embedding 模型已被知识库绑定，不允许修改模型 ID/类型或删除 |
+| 6017 | 供应商下仍有被知识库绑定的 Embedding 模型，不允许删除供应商（防止连级删除产生死引用） |
+| 6018 | Agent 未配置 Chat 模型且系统无全局默认模型（对话入口 fail-fast；此前静默回退占位配置，报晦涩网络错误） |
 | 7001–7005 | 模型供应商参数校验（不存在 / 名称 / 类型 / Key / URL 缺失） |
