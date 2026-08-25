@@ -1,17 +1,21 @@
 package com.agentone.agent.service.impl;
 
+import com.agentone.agent.config.AgentScopeConfig;
 import com.agentone.agent.dto.ChatRequestDTO;
 import com.agentone.agent.entity.AgentDO;
+import com.agentone.agent.entity.ChatAttachmentDO;
 import com.agentone.agent.entity.ChatMessageDO;
 import com.agentone.agent.entity.ChatSessionDO;
 import com.agentone.agent.enums.AgentStatus;
 import com.agentone.agent.mapper.AgentMapper;
+import com.agentone.agent.mapper.ChatAttachmentMapper;
 import com.agentone.agent.mapper.ChatMessageMapper;
 import com.agentone.agent.mapper.ChatSessionMapper;
 import com.agentone.agent.memory.MemoryService;
 import com.agentone.agent.model.MemoryConfig;
 import com.agentone.agent.model.ModelConfig;
 import com.agentone.agent.persona.VariableInjector;
+import com.agentone.agent.service.ChatAttachmentService;
 import com.agentone.agent.service.ChatService;
 import com.agentone.agent.vo.ChatMessageVO;
 import com.agentone.agent.vo.ChatResponseVO;
@@ -39,6 +43,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.event.TextBlockDeltaEvent;
 import io.agentscope.core.event.ThinkingBlockDeltaEvent;
+import io.agentscope.core.message.Base64Source;
+import io.agentscope.core.message.ContentBlock;
+import io.agentscope.core.message.ImageBlock;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
@@ -54,6 +61,8 @@ import reactor.core.publisher.Flux;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -90,6 +99,9 @@ public class ChatServiceImpl implements ChatService {
     private final ModelProviderMapper modelProviderMapper;
     private final Model model;  // AgentScope 自动配置的 Model Bean
     private final ObjectMapper objectMapper;
+    private final AgentScopeConfig agentScopeConfig;
+    private final ChatAttachmentService attachmentService;
+    private final ChatAttachmentMapper attachmentMapper;
 
     /** Q6: ReAct 最大迭代次数（原硬编码 10），可通过 agentone.chat.max-iters 覆盖 */
     @org.springframework.beans.factory.annotation.Value("${agentone.chat.max-iters:10}")
@@ -99,31 +111,39 @@ public class ChatServiceImpl implements ChatService {
     @org.springframework.beans.factory.annotation.Value("${agentone.chat.rag-max-tokens:3000}")
     private int ragMaxTokens;
 
+    /** 附件（文档解析文本）注入本轮对话的 token 上限 */
+    @org.springframework.beans.factory.annotation.Value("${agentone.chat.attachment-max-tokens:6000}")
+    private int attachmentMaxTokens;
+
     @Override
     public ChatResponseVO chat(ChatRequestDTO dto) {
         long startTime = System.currentTimeMillis();
 
-        // 1. 加载 Agent
+        // 1. 加载 Agent，未配置任何可用模型时提前失败（6018），避免回退占位配置产生晦涩网络错误
         AgentDO agentDO = loadAgent(dto.getAgentId());
+        ensureModelConfigured(agentDO);
 
         // 2. 获取或创建会话
         ChatSessionDO session = getOrCreateSession(dto.getSessionId(), agentDO);
 
-        // 3. 先保存用户消息（RAG 检索需要当前消息作为 query）
-        saveMessage(session.getId(), "user", dto.getMessage());
+        // 3. 构建用户消息内容（校验附件归属、多模态 blocks + 附件元信息 JSON）
+        UserContent userContent = buildUserContent(dto);
 
-        // 4~9. 构建上下文/引擎并同步调用；失败时补偿 assistant 错误占位，保持配对（Bug5）
+        // 4. 先保存用户消息（RAG 检索需要当前消息作为 query；落库 content 保持纯文本）
+        saveUserMessage(session.getId(), nullSafe(dto.getMessage()), userContent.attachmentsJson());
+
+        // 5~10. 构建上下文/引擎并同步调用；失败时补偿 assistant 错误占位，保持配对（Bug5）
         String reply;
         int totalTokens;
         try {
-            // 4. 构建系统提示词（AGENTS.md + 变量注入 + RAG + 历史上下文）
+            // 5. 构建系统提示词（AGENTS.md + 变量注入 + RAG + 历史上下文）
             String systemPrompt = buildSystemPrompt(agentDO, session.getId());
 
-            // 5. 创建 ReActAgent（每请求一个实例；sink 收集本轮 Skill 调用）
+            // 6. 创建 ReActAgent（每请求一个实例；sink 收集本轮 Skill 调用）
             List<Map<String, Object>> toolCalls = new java.util.concurrent.CopyOnWriteArrayList<>();
             ReActAgent agent = buildReActAgent(agentDO, systemPrompt, session.getId(), toolCalls);
 
-            // 6. 构建 AgentScope RuntimeContext
+            // 7. 构建 AgentScope RuntimeContext
             io.agentscope.core.agent.RuntimeContext agentCtx = io.agentscope.core.agent.RuntimeContext.builder()
                     .sessionId(session.getId())
                     .userId(RuntimeContext.getUserId())
@@ -131,11 +151,11 @@ public class ChatServiceImpl implements ChatService {
                     .put("agent_id", agentDO.getId())
                     .build();
 
-            // 7. 调用 AgentScope（同步）
+            // 8. 调用 AgentScope（同步）
             Msg userMsg = Msg.builder()
                     .name("user")
                     .role(MsgRole.USER)
-                    .content(List.of(TextBlock.builder().text(dto.getMessage()).build()))
+                    .content(userContent.blocks())
                     .build();
 
             // 同步调用增加有界超时，避免 429/重试时长期占用 Tomcat 线程（Bug8）
@@ -148,7 +168,7 @@ public class ChatServiceImpl implements ChatService {
             long durationMs = System.currentTimeMillis() - startTime;
             saveMessage(session.getId(), "assistant", reply, serializeToolCalls(toolCalls), (int) durationMs);
 
-            totalTokens = estimateTokens(dto.getMessage() + reply);
+            totalTokens = estimateTokens(nullSafe(dto.getMessage()) + reply);
 
             // 9. 原子更新会话统计（避免并发对话同一 session 时 messageCount 自增丢更新）
             incrementSessionStats(session.getId(), totalTokens);
@@ -178,17 +198,23 @@ public class ChatServiceImpl implements ChatService {
         return Flux.defer(() -> {
             long streamStart = System.currentTimeMillis();
             // 1. 加载 Agent + 会话
+            // 未配置任何可用模型时提前失败（6018）：置于会话/消息落库之前，避免产生垃圾会话；
+            // 异常由外层 onErrorResume 转为 SSE error 事件（Bug6 通道）
             AgentDO agentDO = loadAgent(dto.getAgentId());
+            ensureModelConfigured(agentDO);
             ChatSessionDO session = getOrCreateSession(dto.getSessionId(), agentDO);
 
             // 2. 捕获当前请求上下文（SSE doOnComplete 触发时 ThreadLocal 已被清除）
             String capturedUserId = RuntimeContext.getUserId();
             String capturedWorkspaceId = RuntimeContext.getWorkspaceId();
 
-            // 3. 先保存用户消息（RAG 检索需要当前消息作为 query）
-            saveMessage(session.getId(), "user", dto.getMessage());
+            // 3. 构建用户消息内容（校验附件归属、多模态 blocks + 附件元信息 JSON）
+            UserContent userContent = buildUserContent(dto);
 
-            // 4. 构建上下文（AGENTS.md + RAG + 历史）
+            // 4. 先保存用户消息（RAG 检索需要当前消息作为 query；落库 content 保持纯文本）
+            saveUserMessage(session.getId(), nullSafe(dto.getMessage()), userContent.attachmentsJson());
+
+            // 5. 构建上下文（AGENTS.md + RAG + 历史）
             ReActAgent agent;
             io.agentscope.core.agent.RuntimeContext agentCtx;
             List<Map<String, Object>> toolCalls = new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -208,11 +234,11 @@ public class ChatServiceImpl implements ChatService {
                 throw e;
             }
 
-            // 5. 构建用户消息
+            // 6. 构建用户消息
             Msg userMsg = Msg.builder()
                     .name("user")
                     .role(MsgRole.USER)
-                    .content(List.of(TextBlock.builder().text(dto.getMessage()).build()))
+                    .content(userContent.blocks())
                     .build();
 
             // 6. 流式调用 AgentScope streamEvents()，包装为 SSE 事件
@@ -259,7 +285,7 @@ public class ChatServiceImpl implements ChatService {
                                     (int) (System.currentTimeMillis() - streamStart));
                             // 原子自增统计：message_count +2，token_count 累加（Bug3）
                             incrementSessionStats(session.getId(),
-                                    estimateTokens(dto.getMessage() + fullReply.toString()));
+                                    estimateTokens(nullSafe(dto.getMessage()) + fullReply.toString()));
                         } finally {
                             RuntimeContext.clear();
                         }
@@ -278,7 +304,7 @@ public class ChatServiceImpl implements ChatService {
                             saveMessage(session.getId(), "assistant", content, null,
                                     (int) (System.currentTimeMillis() - streamStart));
                             incrementSessionStats(session.getId(),
-                                    estimateTokens(dto.getMessage() + content));
+                                    estimateTokens(nullSafe(dto.getMessage()) + content));
                         } catch (Exception ignore) {
                             log.warn("流式失败补偿消息落库异常: {}", ignore.getMessage());
                         } finally {
@@ -385,6 +411,19 @@ public class ChatServiceImpl implements ChatService {
         if (!session.getUserId().equals(currentUserId)) {
             throw new BusinessException(4003, "无权访问该会话");
         }
+        List<ChatMessageDO> messages = messageMapper.selectList(
+                new LambdaQueryWrapper<ChatMessageDO>()
+                        .eq(ChatMessageDO::getSessionId, sessionId)
+                        .select(ChatMessageDO::getId, ChatMessageDO::getAttachments));
+        List<String> attachmentIds = messages.stream()
+                .map(ChatMessageDO::getAttachments)
+                .filter(Objects::nonNull)
+                .flatMap(json -> parseAttachmentIds(json).stream())
+                .distinct()
+                .toList();
+        if (!attachmentIds.isEmpty()) {
+            attachmentMapper.deleteBatchIds(attachmentIds);
+        }
         messageMapper.delete(
                 new LambdaQueryWrapper<ChatMessageDO>()
                         .eq(ChatMessageDO::getSessionId, sessionId)
@@ -393,6 +432,117 @@ public class ChatServiceImpl implements ChatService {
     }
 
     // ==================== 内部方法 ====================
+
+    /**
+     * 构建用户消息内容块 + 附件元信息 JSON。
+     *
+     * 校验：message 与 attachmentIds 至少其一；/v1 调用（userId 以 apikey: 开头）带附件返回 4015。
+     * 图片走 ImageBlock(Base64Source)，文档解析文本按 token 预算截断后走 TextBlock（前缀「[附件: fileName]」），
+     * 落库 content 保持纯文本，不污染 RAG query 与历史上下文。
+     */
+    private UserContent buildUserContent(ChatRequestDTO dto) {
+        boolean hasText = dto.getMessage() != null && !dto.getMessage().isBlank();
+        boolean hasAttach = dto.getAttachmentIds() != null && !dto.getAttachmentIds().isEmpty();
+        if (!hasText && !hasAttach) {
+            throw new BusinessException(4001, "请输入消息或上传附件");
+        }
+        if (RuntimeContext.getUserId().startsWith("apikey:") && hasAttach) {
+            throw new BusinessException(4015, "API Key 调用不支持附件上传，请使用 /api 路径");
+        }
+
+        List<ContentBlock> blocks = new ArrayList<>();
+        List<Map<String, Object>> attachMeta = new ArrayList<>();
+
+        if (hasAttach) {
+            List<ChatAttachmentDO> attachments = attachmentService.listByIds(dto.getAttachmentIds());
+            for (ChatAttachmentDO a : attachments) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", a.getId());
+                m.put("kind", a.getKind());
+                m.put("fileName", a.getFileName());
+                m.put("fileSize", a.getFileSize());
+                m.put("mimeType", a.getMimeType());
+                attachMeta.add(m);
+
+                if ("image".equals(a.getKind())) {
+                    String b64 = java.util.Base64.getEncoder().encodeToString(a.getData());
+                    blocks.add(ImageBlock.builder()
+                            .source(Base64Source.builder()
+                                    .mediaType(a.getMimeType() != null ? a.getMimeType() : "application/octet-stream")
+                                    .data(b64)
+                                    .build())
+                            .build());
+                } else if (a.getParsedText() != null && !a.getParsedText().isBlank()) {
+                    String text = a.getParsedText();
+                    // token 预算内截断（保留前缀标记让模型识别这是附件内容）
+                    if (attachmentMaxTokens > 0) {
+                        int budget = attachmentMaxTokens;
+                        int tokens = TokenCounter.estimate(text);
+                        if (tokens > budget) {
+                            text = trimToTokenBudget(text, budget);
+                        }
+                    }
+                    blocks.add(TextBlock.builder().text("【附件：" + a.getFileName() + "】\n" + text).build());
+                }
+            }
+        }
+
+        if (hasText) {
+            blocks.add(TextBlock.builder().text(dto.getMessage()).build());
+        } else if (blocks.isEmpty()) {
+            // 防御：至少有一个内容块，否则模型调用会失败（不应到达，因为上面 hasText||hasAttach 保证）
+            blocks.add(TextBlock.builder().text("").build());
+        }
+
+        String attachmentsJson;
+        try {
+            attachmentsJson = attachMeta.isEmpty() ? null : objectMapper.writeValueAsString(attachMeta);
+        } catch (Exception e) {
+            attachmentsJson = null;
+        }
+        return new UserContent(blocks, attachmentsJson);
+    }
+
+    /**
+     * 按 token 预算裁剪文本（近似：字符数 * 4/3 估算 token 数，简单线性截断）。
+     * TokenCounter.estimate 按字符长度估算，此处用相同估算反推字符上限。
+     */
+    private String trimToTokenBudget(String text, int tokenBudget) {
+        int estimateTotal = TokenCounter.estimate(text);
+        if (estimateTotal <= tokenBudget) return text;
+        int charBudget = Math.max(100, text.length() * tokenBudget / Math.max(1, estimateTotal));
+        return text.substring(0, Math.min(text.length(), charBudget));
+    }
+
+    /**
+     * 构建用户消息的返回结构：内容块 + 附件元信息 JSON（用于落库 chat_message.attachments）。
+     */
+    private record UserContent(List<ContentBlock> blocks, String attachmentsJson) {}
+
+    /**
+     * 未配置任何可用模型时提前失败（6018）。
+     *
+     * 背景：Agent 未绑定模型且全局 OPENAI_API_KEY 未配置时，此前会静默回退到占位配置
+     * （api.openai.com + sk-placeholder），对话时报 "Remote host terminated the handshake"
+     * 之类的晦涩网络错误，用户无法定位原因。
+     * 校验顺序与 buildReActAgent 的解析优先级一致：chatModelId → 直填 apiKey → 全局配置。
+     */
+    private void ensureModelConfigured(AgentDO agentDO) {
+        ModelConfig modelConfig = parseModelConfig(agentDO.getModelConfig());
+        if (modelConfig.getChatModelId() != null && !modelConfig.getChatModelId().isBlank()) {
+            // 已绑定 model 表模型，供应商存在性/权限由 buildReActAgent 校验（6002/6011/6012）
+            return;
+        }
+        if (modelConfig.getApiKey() != null && !modelConfig.getApiKey().isBlank()) {
+            return; // 直填配置
+        }
+        String globalKey = agentScopeConfig.getOpenai().getApiKey();
+        if (globalKey != null && !globalKey.isBlank() && !"sk-placeholder".equals(globalKey)) {
+            return; // 已配置全局默认模型（OPENAI_API_KEY）
+        }
+        throw new BusinessException(6018,
+                "当前 Agent 未配置 Chat 模型：请先在 Agent「模型策略」中选择 Chat 模型（系统也未配置全局默认模型）");
+    }
 
     /**
      * 构建 ReActAgent（每请求一个实例，非线程安全）
@@ -665,21 +815,44 @@ public class ChatServiceImpl implements ChatService {
     }
 
     private void saveMessage(String sessionId, String role, String content) {
-        saveMessage(sessionId, role, content, null);
+        saveMessage(sessionId, role, content, null, null, null);
     }
 
     private void saveMessage(String sessionId, String role, String content, String skillCallsJson) {
-        saveMessage(sessionId, role, content, skillCallsJson, null);
+        saveMessage(sessionId, role, content, skillCallsJson, null, null);
     }
 
     private void saveMessage(String sessionId, String role, String content, String skillCallsJson,
                              Integer durationMs) {
+        saveMessage(sessionId, role, content, skillCallsJson, null, durationMs);
+    }
+
+    /**
+     * 保存用户消息（含附件元信息 JSON）。独立命名避免与 4 参 skillCalls 重载签名冲突。
+     */
+    private void saveUserMessage(String sessionId, String content, String attachmentsJson) {
+        ChatMessageDO msg = new ChatMessageDO();
+        msg.setSessionId(sessionId);
+        msg.setRole("user");
+        msg.setContent(content);
+        msg.setTokenCount(estimateTokens(content));
+        msg.setSkillCalls(null);
+        msg.setAttachments(attachmentsJson);
+        msg.setDurationMs(null);
+        msg.setTraceId(UUID.randomUUID().toString());
+        msg.setCreatedAt(LocalDateTime.now());
+        messageMapper.insert(msg);
+    }
+
+    private void saveMessage(String sessionId, String role, String content, String skillCallsJson,
+                             String attachmentsJson, Integer durationMs) {
         ChatMessageDO msg = new ChatMessageDO();
         msg.setSessionId(sessionId);
         msg.setRole(role);
         msg.setContent(content);
         msg.setTokenCount(estimateTokens(content));
         msg.setSkillCalls(skillCallsJson);
+        msg.setAttachments(attachmentsJson);
         msg.setDurationMs(durationMs);
         msg.setTraceId(UUID.randomUUID().toString());
         msg.setCreatedAt(LocalDateTime.now());
@@ -731,6 +904,31 @@ public class ChatServiceImpl implements ChatService {
             sanitized = sanitized.substring(0, 200) + "...";
         }
         return sanitized;
+    }
+
+    /**
+     * 从 chat_message.attachments JSONB 中提取 attachment id 列表（容错：解析失败返回空）
+     */
+    private List<String> parseAttachmentIds(String json) {
+        if (json == null || json.isBlank()) return List.of();
+        try {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> list = objectMapper.readValue(json, List.class);
+            if (list == null) return List.of();
+            List<String> ids = new ArrayList<>();
+            for (Map<String, Object> m : list) {
+                Object id = m.get("id");
+                if (id instanceof String s && !s.isBlank()) ids.add(s);
+            }
+            return ids;
+        } catch (Exception e) {
+            log.warn("解析 attachments JSON 失败: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    private static String nullSafe(String s) {
+        return s == null ? "" : s;
     }
 
     private ModelConfig parseModelConfig(String json) {

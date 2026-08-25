@@ -1,9 +1,49 @@
 import api from './api'
-import type { Result, PageResult, ChatSession, ChatMessage, ChatResponse } from '@/types'
+import type { Result, PageResult, ChatSession, ChatMessage, ChatResponse, ChatMessageAttachment } from '@/types'
 
 /** 同步对话 */
-export function chat(agentId: string, message: string, sessionId?: string) {
-  return api.post<Result<ChatResponse>>('/api/chat', { agentId, message, sessionId, stream: false })
+export function chat(
+  agentId: string,
+  message: string,
+  sessionId?: string,
+  attachmentIds: string[] = []
+) {
+  return api.post<Result<ChatResponse>>('/api/chat', {
+    agentId, message, sessionId, stream: false, attachmentIds,
+  })
+}
+
+/** 上传对话附件（multipart 单文件） */
+export function uploadAttachment(file: File) {
+  const form = new FormData()
+  form.append('file', file)
+  return api.post<Result<ChatMessageAttachment>>('/api/chat/attachments', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120_000,
+  })
+}
+
+/** 附件在线预览/下载 URL（同源，Cookie 自动携带） */
+export function attachmentUrl(id: string): string {
+  return `/api/chat/attachments/${id}`
+}
+
+/**
+ * 解析消息 attachments 字段：后端可能下发 JSON 字符串或已解析数组。
+ * 统一返回 ChatMessageAttachment[]。
+ */
+export function parseAttachments(raw: unknown): ChatMessageAttachment[] {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw as ChatMessageAttachment[]
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? (parsed as ChatMessageAttachment[]) : []
+    } catch {
+      return []
+    }
+  }
+  return []
 }
 
 /**
@@ -24,7 +64,8 @@ export function chatStream(
   onDelta: (chunk: string) => void,
   onThinking: (chunk: string) => void,
   onDone: (sessionId: string) => void,
-  onError: (err: string) => void
+  onError: (err: string) => void,
+  attachmentIds: string[] = []
 ): AbortController {
   const controller = new AbortController()
 
@@ -36,7 +77,7 @@ export function chatStream(
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',
     },
-    body: JSON.stringify({ agentId, message, sessionId, stream: true }),
+    body: JSON.stringify({ agentId, message, sessionId, stream: true, attachmentIds }),
     signal: controller.signal,
     credentials: 'include',
   })

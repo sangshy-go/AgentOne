@@ -22,6 +22,7 @@ public class ChatMessageDO {
     private String content;
     private Integer tokenCount;
     private String skillCalls;  // JSONB
+    private String attachments; // JSONB
     private Integer durationMs;
     private String traceId;
     private LocalDateTime createdAt;
