@@ -84,7 +84,7 @@
             <div class="notice notice-info">
               <span v-html="ICONS.info"></span>
               <div>
-                已识别为 <strong>导出文件技能</strong>：{{ jsonPayload.type === 'api' ? 'API 型' : '内容型' }}，版本 {{ jsonPayload.version || '1' }}。
+                已识别为 <strong>导出文件技能</strong>：{{ jsonPayload.type === 'api' ? 'API 封装' : '指令模板' }}，版本 {{ jsonPayload.version || '1' }}。
                 配置与参数按原定义导入，名称 / 简介 / 工种可在下方编辑。
               </div>
             </div>
@@ -100,7 +100,7 @@
               <div v-if="pkgIsScript">
                 已识别为 <strong>脚本包技能</strong>：SKILL.md + {{ pkgFiles.length - 1 }} 个脚本 / 资源文件。
               </div>
-              <div v-else>已识别为 <strong>内容型技能</strong>：仅含 SKILL.md，无脚本与资源。</div>
+              <div v-else>已识别为 <strong>指令模板技能</strong>：仅含 SKILL.md，无脚本与资源。</div>
             </div>
             <div v-if="pkgIsScript" class="notice notice-warn">
               <span v-html="ICONS.warn"></span>
@@ -417,7 +417,7 @@ const ENTRIES: Array<{
   {
     key: 'blank',
     title: '空白创建',
-    desc: '从零沉淀团队 SOP、规范、话术，写成内容型技能。',
+    desc: '从零沉淀团队 SOP、规范、话术，写成指令模板技能。',
     audience: '想沉淀经验的业务同学',
     icon: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>',
     icBg: 'linear-gradient(135deg,#ECFDF5,#D1FAE5)',
@@ -585,8 +585,8 @@ const step2Title = computed(() => {
 const step2Desc = computed(() => {
   const map: Record<EntryKey, string> = {
     template: '选择一个模板，系统会预填内容骨架，你可继续修改。',
-    blank: '把团队经验、SOP、规范写成内容型技能。',
-    import: '导入外包或已有的技能成品：文件夹 / .zip 自动识别内容型或脚本包，导出文件（.json）按原定义还原。',
+    blank: '把团队经验、SOP、规范写成指令模板技能。',
+    import: '导入外包或已有的技能成品：文件夹 / .zip 自动识别指令模板或脚本包，导出文件（.json）按原定义还原。',
     api: '把已有 REST API 封装成技能。面向 IT / 集成场景，内置 SSRF 防护。',
   }
   return entry.value ? map[entry.value] : ''

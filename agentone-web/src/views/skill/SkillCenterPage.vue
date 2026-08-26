@@ -758,7 +758,9 @@ function authorOf(s: SkillItem): string {
 }
 
 function typeLabel(type: string): string {
-  const map: Record<string, string> = { builtin: '内置', api: 'API 封装', prompt: '内容型', mcp: 'MCP' }
+  const map: Record<string, string> = {
+    builtin: '系统内置', api: 'API 封装', prompt: '指令模板', mcp: 'MCP 工具', market: '市场安装',
+  }
   return map[type] || type
 }
 
