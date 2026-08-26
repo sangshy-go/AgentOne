@@ -13,7 +13,7 @@ AgentOne 是开源 AI Agent 中台，MVP 阶段跑通「配模型 → 建知识�
 | RAG | Spring AI（Workflow 管道：分块/向量化/检索）+ PgVector | 1.0.0 |
 | ORM | MyBatis-Plus（含租户拦截器） | 3.5.x |
 | 认证 | Sa-Token（JWT Simple 模式） | — |
-| 数据库迁移 | Flyway（V1–V13） | — |
+| 数据库迁移 | Flyway（V1–V21） | — |
 | 前端 | Vue 3 + Vite + Naive UI + Pinia | 3.5 / 6 / 2.40 |
 | 基础设施 | PostgreSQL 16 (pgvector) + Redis 7 + MinIO（预留，MVP 未启用） | — |
 | 语言/运行 | Java 17 / Node 20 | — |
@@ -52,6 +52,7 @@ PostgreSQL / Redis / 外部 LLM API
 | 组件 | 职责 |
 |------|------|
 | `JwtAuthFilter` | `/api/*` JWT 认证，解析 userId/workspaceId/email 写入 `RuntimeContext`（ThreadLocal） |
+| `WorkspaceRbacFilter` | 工作空间角色强制（课题⑥，@Order 排 JwtAuthFilter 后）：每请求从 DB 取角色写 `Context.role`，非成员 2002 / observer 写操作 2004 / `/api/members` 限 admin+owner 2003；角色变更即时生效 |
 | `ApiKeyAuthFilter` | `/v1/*` X-API-Key 认证 + 每日限额（`/v1/health` 白名单） |
 | `WorkspaceInterceptor` | MyBatis 租户拦截器：SQL 自动注入 `workspace_id` 条件与填充（document/document_chunk/vector_store 等在白名单，靠 knowledgeId 间接隔离） |
 | `GlobalExceptionHandler` | 统一异常 → `Result`（业务异常携带错误码） |
@@ -64,6 +65,7 @@ PostgreSQL / Redis / 外部 LLM API
 ```
 浏览器 → Nginx（try_files SPA / 反代 /api、/v1，SSE 关闭缓冲）
   → JwtAuthFilter（JWT → RuntimeContext）
+  → WorkspaceRbacFilter（DB 取角色 → 2002/2004/2003 或放行）
   → Controller（@Valid 校验）
   → Service（业务 + 租户隔离由拦截器自动完成）
   → Mapper → PostgreSQL
@@ -108,7 +110,7 @@ POST /v1/chat（X-API-Key）
 | 模型 | `model_provider`（供应商）、`model`（chat/embedding/rerank，两层结构） |
 | Skill | `skill`、`agent_skill_binding`、`agent_knowledge_binding` |
 | 开放 API | `api_key`（哈希存储）、`chat_api_log` |
-| Phase 2 预留 | `mcp_server`、`scheduled_task`、`task_execution_log`、`audit_log`、`skill_call_log` |
+| Phase 2 预留 | `mcp_server`、`scheduled_task`、`task_execution_log`、`audit_log`、`skill_call_log`（对话链路写入，课题⑥监控时间线/Skill 调用查询读取） |
 
 - 主键：32 位 hex 字符串（MyBatis-Plus IdType），`vector_store` 的 id 列为 TEXT（V6 修复，与 Spring AI 默认 UUID 兼容问题）。
 - 多租户：业务表带 `workspace_id`，由 `WorkspaceInterceptor` 自动过滤。
@@ -149,4 +151,4 @@ POST /v1/chat（X-API-Key）
 
 - **Skill 当前为提示词注入**：`buildSkillPrompt` 将绑定 Skill 描述写进系统提示词，ReAct 循环**尚未注册工具**（无 function calling）；SkillExecutor 执行基础设施已就绪，`SkillAgentTool`（实现 AgentScope `AgentTool` 接口）已有雏形。Phase 2 Skill 中心将把 Skill 注册为 AgentScope 工具实现真正的 function calling，并评估复用 `agentscope-harness` 的 HarnessSkillMiddleware / McpServerRegistrar 等内置能力。
 - 列表接口无分页；知识库检索为纯向量（无混合检索/重排，详见 `improvements.md`）。
-- RBAC 仅有 workspace owner/member 两级，细粒度角色在 Phase 2。
+- ~~RBAC 仅有 workspace owner/member 两级~~ → 课题⑥已落地 4 角色（owner/admin/developer/observer）+ `WorkspaceRbacFilter` HTTP 层强制（详见 docs/api/rest-api.md「RBAC 角色」与 §13-15）。

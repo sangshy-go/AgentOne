@@ -236,7 +236,13 @@ a:hover {
   cursor: pointer;
   position: relative;
   overflow: hidden;
+  border-top: 3px solid var(--primary);
 }
+
+.stat-card:nth-child(1) { border-top-color: var(--purple); }
+.stat-card:nth-child(2) { border-top-color: var(--blue); }
+.stat-card:nth-child(3) { border-top-color: var(--green); }
+.stat-card:nth-child(4) { border-top-color: var(--orange); }
 
 .stat-card::after {
   content: '';
@@ -516,6 +522,11 @@ a:hover {
 @keyframes pageIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* ============================================================

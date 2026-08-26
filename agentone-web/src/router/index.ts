@@ -73,6 +73,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/apikey/ApiKeyListPage.vue'),
       },
       {
+        path: '/monitor',
+        name: 'Monitor',
+        component: () => import('@/views/monitor/MonitorPage.vue'),
+      },
+      {
         path: '/settings',
         name: 'Settings',
         component: () => import('@/views/settings/SettingsPage.vue'),

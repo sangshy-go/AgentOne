@@ -60,7 +60,7 @@
           <div class="user-avatar">{{ authStore.nickname?.charAt(0) || 'U' }}</div>
           <div v-if="!collapsed" class="user-info">
             <div class="user-name">{{ authStore.nickname || '用户' }}</div>
-            <div class="user-role">管理员</div>
+            <div class="user-role">{{ roleLabel }}</div>
           </div>
           <svg v-if="!collapsed" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--text-muted); flex-shrink: 0;">
             <path d="M6 9l6 6 6-6" />
@@ -87,12 +87,6 @@
       <header class="header">
         <div class="header-breadcrumb">
           {{ currentRouteName }}
-        </div>
-        <div class="header-right">
-          <button class="header-btn" title="暗色模式" @click="authStore.toggleDarkMode">
-            {{ authStore.isDarkMode ? '☀️' : '🌙' }}
-          </button>
-          <button class="header-btn" title="帮助">?</button>
         </div>
       </header>
 
@@ -182,6 +176,11 @@ const navGroups = [
     label: '管理',
     items: [
       {
+        key: 'Monitor',
+        label: '监控日志',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
+      },
+      {
         key: 'Settings',
         label: '工作空间',
         icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>',
@@ -201,10 +200,19 @@ const currentRouteName = computed(() => {
     Mcp: 'MCP 集成',
     Models: '模型管理',
     ApiKeys: 'API Key',
+    Monitor: '监控日志',
     Settings: '工作空间',
   }
   return map[route.name as string] || '工作台'
 })
+
+const ROLE_LABELS: Record<string, string> = {
+  owner: '所有者',
+  admin: '管理员',
+  developer: '开发者',
+  observer: '观察者',
+}
+const roleLabel = computed(() => ROLE_LABELS[authStore.currentRole] || authStore.currentRole)
 
 const currentWorkspaceName = computed(() => {
   const ws = authStore.workspaces.find((w) => w.id === authStore.workspaceId)
@@ -231,6 +239,7 @@ function handleLogout() {
   message.success('已退出登录')
   router.push('/login')
 }
+
 </script>
 
 <style scoped>
@@ -587,37 +596,6 @@ function handleLogout() {
   font-size: 13px;
   color: var(--text-muted);
   font-weight: 500;
-}
-
-.header-right {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.header-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: #FFFFFF;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-secondary);
-  transition: var(--transition);
-  position: relative;
-  font-size: 15px;
-}
-
-.header-btn:hover {
-  background: var(--primary);
-  color: white;
-  border-color: var(--primary);
-  box-shadow: var(--glow-primary-md);
-  transform: translateY(-2px);
 }
 
 /* Content */

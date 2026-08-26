@@ -18,6 +18,14 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isLoggedIn = computed(() => hasSession.value)
 
+  /** 当前工作空间角色（RBAC，来自工作空间列表，切换空间后随 loadWorkspaces 刷新） */
+  const currentRole = computed(
+    () => workspaces.value.find((w) => w.id === workspaceId.value)?.role ?? 'observer'
+  )
+  const isAdmin = computed(() => currentRole.value === 'owner' || currentRole.value === 'admin')
+  /** 观察者：全局只读，前端隐藏写操作（后端 WorkspaceRbacFilter 兜底强制） */
+  const isReadOnly = computed(() => currentRole.value === 'observer')
+
   /** 把后端返回的用户信息写入内存 + 本地（不含 token） */
   function applyAuth(data: { userId: string; email: string; nickname: string; workspaceId: string }) {
     userId.value = data.userId
@@ -118,6 +126,9 @@ export const useAuthStore = defineStore('auth', () => {
     workspaces,
     isDarkMode,
     isLoggedIn,
+    currentRole,
+    isAdmin,
+    isReadOnly,
     login,
     register,
     fetchMe,

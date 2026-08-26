@@ -12,6 +12,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -21,9 +22,11 @@ import java.util.Map;
 /**
  * JWT 认证过滤器
  * 从 Authorization Header 解析 JWT，注入 RuntimeContext
+ * @Order(1)：必须先于 WorkspaceRbacFilter（@Order(2)，依赖本过滤器注入的 Context）
  */
 @Slf4j
 @Component
+@Order(1)
 @RequiredArgsConstructor
 public class JwtAuthFilter extends OncePerRequestFilter {
 

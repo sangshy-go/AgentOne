@@ -102,8 +102,16 @@ public class WorkspaceController {
      */
     @PutMapping("/{id}")
     public Result<WorkspaceVO> update(@PathVariable String id, @Valid @RequestBody WorkspaceDTO dto) {
-        if (!workspaceService.checkPermission(RuntimeContext.getUserId(), id)) {
+        String userId = RuntimeContext.getUserId();
+        if (!workspaceService.checkPermission(userId, id)) {
             return Result.fail(2002, "无权操作该工作空间");
+        }
+
+        // 空间信息变更限管理员/所有者（observer/developer 不应改空间设置；
+        // /api/workspaces 在 RBAC 过滤器的公共白名单内，需在此显式把关）
+        String role = workspaceService.getUserRole(userId, id);
+        if (!"owner".equals(role) && !"admin".equals(role)) {
+            return Result.fail(2003, "仅管理员或所有者可修改工作空间信息");
         }
 
         WorkspaceDO workspace = workspaceMapper.selectById(id);

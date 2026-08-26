@@ -1,5 +1,5 @@
 import api from './api'
-import type { Result, Workspace } from '@/types'
+import type { Result, PageResult, Workspace, Member } from '@/types'
 
 /** 获取工作空间列表 */
 export function listWorkspaces() {
@@ -19,4 +19,24 @@ export function updateWorkspace(id: string, data: { name: string; description?: 
 /** 删除工作空间 */
 export function deleteWorkspace(id: string) {
   return api.delete<Result<void>>(`/api/workspaces/${id}`)
+}
+
+/** 成员列表（当前工作空间） */
+export function listMembers(params?: { current?: number; size?: number }) {
+  return api.get<Result<PageResult<Member>>>('/api/members', { params })
+}
+
+/** 添加成员（按已注册邮箱） */
+export function addMember(data: { email: string; role: string }) {
+  return api.post<Result<Member>>('/api/members', data)
+}
+
+/** 变更成员角色 */
+export function updateMemberRole(userId: string, role: string) {
+  return api.put<Result<void>>(`/api/members/${userId}`, { role })
+}
+
+/** 移除成员 */
+export function removeMember(userId: string) {
+  return api.delete<Result<void>>(`/api/members/${userId}`)
 }

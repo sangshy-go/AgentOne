@@ -12,6 +12,8 @@ public class Context {
     private String workspaceId;
     private String email;
     private String agentId;
+    /** 用户在当前工作空间的角色：owner/admin/developer/observer，由 WorkspaceRbacFilter 按请求填充 */
+    private String role;
 
     public static Context of(String userId, String workspaceId) {
         Context ctx = new Context();
