@@ -5,7 +5,7 @@
         <n-select
           v-model:value="config.chatModelId"
           :options="chatModelOptions"
-          placeholder="选择已配置的 Chat 模型（可选）"
+          placeholder="选择 Chat 模型（未选择时回退系统默认模型）"
           filterable
           clearable
         />
@@ -77,5 +77,8 @@ function save() {
   emit('save', {
     modelConfig: JSON.stringify(config),
   })
+  if (!config.chatModelId) {
+    message.warning('未选择 Chat 模型：若未配置系统默认模型（OPENAI_API_KEY），该 Agent 将无法对话')
+  }
 }
 </script>

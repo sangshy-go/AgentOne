@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -59,10 +60,16 @@ public class McpConnectionManager {
                 case "stdio" -> builder.stdioTransport(server.getCommand(), parseArgs(server.getArgs()), Map.of());
                 case "sse" -> {
                     builder.sseTransport(server.getUrl());
+                    // 强制 HTTP/1.1：部分 MCP Server（如 pipeworx.io）对 HTTP/2 支持异常，
+                    // JDK HttpClient 默认 HTTP/2 会在 ALPN 握手阶段被服务端关闭连接，
+                    // 表现为 "Remote host terminated the handshake"
+                    builder.customizeSseClient(http -> http.version(HttpClient.Version.HTTP_1_1));
                     applyHeaders(builder, server.getHeaders());
                 }
                 case "streamable_http" -> {
                     builder.streamableHttpTransport(server.getUrl());
+                    // 强制 HTTP/1.1：原因同上
+                    builder.customizeStreamableHttpClient(http -> http.version(HttpClient.Version.HTTP_1_1));
                     applyHeaders(builder, server.getHeaders());
                 }
                 default -> throw new IllegalArgumentException("不支持的 transport: " + server.getTransport());

@@ -109,7 +109,9 @@ public class DocumentProcessor {
                             .eq(DocumentChunkDO::getDocumentId, doc.getId())
                             .orderByAsc(DocumentChunkDO::getChunkIndex)
             );
-            int batchSize = 20;
+            // 批大小取 10（最低公共上限）：DashScope text-embedding-v3/v4 单次请求最多 10 条文本，
+            // 超过会报 "batch size is invalid, it should not be larger than 10"；OpenAI 等上限更宽，取 10 全兼容
+            int batchSize = 10;
             for (int i = 0; i < allChunks.size(); i += batchSize) {
                 int end = Math.min(i + batchSize, allChunks.size());
                 List<Document> batch = new ArrayList<>();
@@ -179,12 +181,14 @@ public class DocumentProcessor {
      * 未配置或模型不存在时直接抛异常，不做兜底。
      */
     public ModelDO resolveEmbeddingModel(String embeddingModelId) {
+        // 知识库的 Embedding 模型创建后不可变，也没有事后配置入口，
+        // 因此错误文案直接给出唯一可行路径：删除并重建知识库，避免用户找不到"配置"入口困惑
         if (embeddingModelId == null || embeddingModelId.isBlank()) {
-            throw new BusinessException(6008, "知识库未配置 Embedding 模型，请在知识库设置中绑定 Embedding 模型");
+            throw new BusinessException(6008, "知识库未绑定 Embedding 模型（历史数据），请删除该知识库并重新创建");
         }
         ModelDO model = modelMapper.selectById(embeddingModelId);
         if (model == null) {
-            throw new BusinessException(6008, "知识库绑定的 Embedding 模型不存在（可能已被删除），请重新配置");
+            throw new BusinessException(6008, "知识库绑定的 Embedding 模型已被删除，无法恢复，请删除该知识库并重新创建");
         }
         return model;
     }

@@ -2,8 +2,10 @@ package com.agentone.knowledge.service.impl;
 
 import com.agentone.common.exception.BusinessException;
 import com.agentone.knowledge.dto.ModelDTO;
+import com.agentone.knowledge.entity.KnowledgeBaseDO;
 import com.agentone.knowledge.entity.ModelDO;
 import com.agentone.knowledge.entity.ModelProviderDO;
+import com.agentone.knowledge.mapper.KnowledgeBaseMapper;
 import com.agentone.knowledge.mapper.ModelMapper;
 import com.agentone.knowledge.mapper.ModelProviderMapper;
 import com.agentone.knowledge.service.ModelService;
@@ -34,6 +36,7 @@ public class ModelServiceImpl implements ModelService {
     private final ModelMapper modelMapper;
     private final ModelProviderMapper providerMapper;
     private final VectorStoreService vectorStoreService;
+    private final KnowledgeBaseMapper knowledgeBaseMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -65,8 +68,10 @@ public class ModelServiceImpl implements ModelService {
                 int dims = vectorStoreService.probeEmbeddingDimensions(provider, model);
                 model.setDimensions(dims);
             } catch (Exception e) {
-                log.warn("创建 embedding 模型时探测维度失败，留待首次使用时解析: providerId={}, modelId={}, error={}",
-                        providerId, dto.getModelId(), e.getMessage());
+                // 快速失败：探测失败说明 模型ID / Base URL / Key 组合当前不可用。
+                // 若仍入库，坏配置会延迟到知识库文档上传时才以晦涩的底层 HTTP 报错爆出（400 Model not exist.），难以定位。
+                throw new BusinessException(6015, "Embedding 模型不可用，创建失败：" + briefError(e)
+                        + "。请核对模型 ID（区分大小写）与 Base URL 是否匹配");
             }
         }
         model.setStatus("active");
@@ -123,6 +128,20 @@ public class ModelServiceImpl implements ModelService {
         // S9: 校验模型所属 provider 归属当前工作空间（model_provider 不在租户白名单，需手动校验）
         verifyProviderOwnership(model.getProviderId());
 
+        boolean modelIdChanged = dto.getModelId() != null && !dto.getModelId().equals(model.getModelId());
+        boolean typeChanged = dto.getModelType() != null && !dto.getModelType().equals(model.getModelType());
+
+        // 已被知识库绑定的 embedding 模型不允许变更 modelId / modelType：
+        // 知识库的 embedding 模型创建后不可变，模型侧偷换会让已入库向量与新查询向量落入不同向量空间，检索静默失效。
+        if ("embedding".equals(model.getModelType()) && (modelIdChanged || typeChanged)) {
+            Long bound = knowledgeBaseMapper.selectCount(
+                    new LambdaQueryWrapper<KnowledgeBaseDO>()
+                            .eq(KnowledgeBaseDO::getEmbeddingModelId, modelId));
+            if (bound != null && bound > 0) {
+                throw new BusinessException(6016, "该 Embedding 模型已被知识库绑定，模型 ID 与类型不可修改；如需更换请新建模型并重新创建知识库绑定");
+            }
+        }
+
         model.setModelType(dto.getModelType());
         model.setModelId(dto.getModelId());
         model.setDisplayName(dto.getDisplayName() != null ? dto.getDisplayName() : dto.getModelId());
@@ -132,6 +151,19 @@ public class ModelServiceImpl implements ModelService {
         // embedding 模型维度决定向量表（vector_{dimensions}），若在更新时篡改，已入库向量与
         // 后续查询向量将处于不同维度空间，导致检索失效、历史向量沦为孤儿。保持与创建时 /
         // 自动探测值一致，如需更换维度请新建模型并在知识库侧重新绑定（知识库 embedding 模型本身不可变）。
+
+        // 变更后若为 embedding 模型且关键字段（modelId / modelType）有动，原 dimensions 不再可信，
+        // 重新探测并回写；探测失败则拒绝保存，避免留下维度与实际模型不符的坏配置。
+        if ("embedding".equals(model.getModelType()) && (modelIdChanged || typeChanged)) {
+            ModelProviderDO provider = providerMapper.selectById(model.getProviderId());
+            try {
+                model.setDimensions(vectorStoreService.probeEmbeddingDimensions(provider, model));
+            } catch (Exception e) {
+                throw new BusinessException(6015, "Embedding 模型不可用，修改被拒绝：" + briefError(e)
+                        + "。请核对模型 ID（区分大小写）与 Base URL 是否匹配");
+            }
+        }
+
         model.setUpdatedAt(LocalDateTime.now());
 
         modelMapper.updateById(model);
@@ -152,6 +184,17 @@ public class ModelServiceImpl implements ModelService {
 
         // S9: 校验模型所属 provider 归属当前工作空间（model_provider 不在租户白名单，需手动校验）
         verifyProviderOwnership(model.getProviderId());
+
+        // 删除保护：knowledge_base.embedding_model_id 无外键，直接删会让绑定的知识库变成死引用、
+        // 永久无法处理文档（与 Skill 删除保护 5005 同一思路）
+        if ("embedding".equals(model.getModelType())) {
+            Long bound = knowledgeBaseMapper.selectCount(
+                    new LambdaQueryWrapper<KnowledgeBaseDO>()
+                            .eq(KnowledgeBaseDO::getEmbeddingModelId, modelId));
+            if (bound != null && bound > 0) {
+                throw new BusinessException(6016, "该 Embedding 模型已被知识库绑定，不能删除；请先删除依赖它的知识库");
+            }
+        }
 
         modelMapper.deleteById(modelId);
         log.info("删除模型成功: modelId={}", modelId);
@@ -204,6 +247,12 @@ public class ModelServiceImpl implements ModelService {
                 && !wsId.equals(provider.getWorkspaceId()))) {
             throw new BusinessException(6013, "无权操作该模型（供应商不存在或不属于当前工作空间）");
         }
+    }
+
+    /** 截取底层异常消息用于业务错误展示（HTTP 错误体可能很长，前端提示放不下） */
+    private String briefError(Exception e) {
+        String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+        return msg.length() > 200 ? msg.substring(0, 200) : msg;
     }
 
     private ModelVO toModelVO(ModelDO model, String providerName) {

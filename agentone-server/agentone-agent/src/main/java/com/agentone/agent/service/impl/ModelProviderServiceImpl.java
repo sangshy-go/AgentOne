@@ -8,8 +8,11 @@ import com.agentone.agent.vo.ModelCheckVO;
 import com.agentone.agent.vo.ModelProviderVO;
 import com.agentone.common.context.RuntimeContext;
 import com.agentone.common.exception.BusinessException;
+import com.agentone.knowledge.entity.KnowledgeBaseDO;
+import com.agentone.knowledge.entity.ModelDO;
 import com.agentone.knowledge.entity.ModelProviderDO;
 import com.agentone.knowledge.mapper.KnowledgeBaseMapper;
+import com.agentone.knowledge.mapper.ModelMapper;
 import com.agentone.knowledge.mapper.ModelProviderMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -35,6 +38,7 @@ public class ModelProviderServiceImpl implements ModelProviderService {
     private final ModelProviderMapper modelProviderMapper;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final AgentMapper agentMapper;
+    private final ModelMapper modelMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -116,6 +120,23 @@ public class ModelProviderServiceImpl implements ModelProviderService {
             throw new BusinessException(7001, "模型供应商不存在");
         }
         checkOwnership(provider);
+
+        // model.provider_id 是 ON DELETE CASCADE：删供应商会连级删掉其下模型，
+        // 而 knowledge_base.embedding_model_id 无外键，被绑定的知识库会留下死引用永久不可用，
+        // 故存在被绑定的模型时拒绝删除（与 deleteModel 的绑定保护一致）
+        List<String> modelIds = modelMapper.selectList(
+                new LambdaQueryWrapper<ModelDO>()
+                        .eq(ModelDO::getProviderId, id))
+                .stream().map(ModelDO::getId).collect(Collectors.toList());
+        if (!modelIds.isEmpty()) {
+            Long bound = knowledgeBaseMapper.selectCount(
+                    new LambdaQueryWrapper<KnowledgeBaseDO>()
+                            .in(KnowledgeBaseDO::getEmbeddingModelId, modelIds));
+            if (bound != null && bound > 0) {
+                throw new BusinessException(6017, "该供应商下仍有 Embedding 模型被知识库绑定，不能删除；请先删除依赖它的知识库");
+            }
+        }
+
         // 解除知识库 / Agent 对该供应商的引用（跨租户，避免多租户拦截器漏清导致 FK 冲突）
         int kbCleared = knowledgeBaseMapper.clearModelProviderId(id);
         int agentCleared = agentMapper.clearModelProviderId(id);
