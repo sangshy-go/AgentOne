@@ -655,10 +655,12 @@ public class ChatServiceImpl implements ChatService {
         if (agent == null) {
             throw new BusinessException(ResultCode.AGENT_NOT_FOUND);
         }
-        // 只有 published、testing、draft 状态可以对话
+        // published、testing、draft、pending_review 状态可以对话（审批中仍可在控制台验证；
+        // IM 回调侧由 ImBotServiceImpl 单独限定仅 PUBLISHED）
         if (agent.getStatus() != AgentStatus.PUBLISHED
                 && agent.getStatus() != AgentStatus.TESTING
-                && agent.getStatus() != AgentStatus.DRAFT) {
+                && agent.getStatus() != AgentStatus.DRAFT
+                && agent.getStatus() != AgentStatus.PENDING_REVIEW) {
             throw new BusinessException(3003, "该 Agent 已停用，无法对话");
         }
         return agent;

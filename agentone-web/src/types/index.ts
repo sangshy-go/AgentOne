@@ -264,6 +264,36 @@ export interface Member {
   joinedAt: string
 }
 
+/** Agent 发布审批申请（课题⑩） */
+export interface PublishRequest {
+  id: string
+  agentId: string
+  agentName: string
+  status: 'pending' | 'approved' | 'rejected' | 'withdrawn'
+  submitterId: string
+  submitterEmail: string
+  reviewerId: string | null
+  reviewerEmail: string | null
+  reviewComment: string | null
+  submittedAt: string
+  reviewedAt: string | null
+  /** Agent 当前实时状态（列表展示用） */
+  agentStatus: string | null
+}
+
+/** 审计日志（课题⑩） */
+export interface AuditLog {
+  id: string
+  operatorId: string
+  action: string
+  resourceType: string
+  resourceId: string | null
+  method: string | null
+  path: string | null
+  operatorEmail: string | null
+  createdAt: string
+}
+
 /** IM 机器人 */
 export interface ImBot {
   id: string

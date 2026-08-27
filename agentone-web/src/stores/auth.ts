@@ -23,8 +23,14 @@ export const useAuthStore = defineStore('auth', () => {
     () => workspaces.value.find((w) => w.id === workspaceId.value)?.role ?? 'observer'
   )
   const isAdmin = computed(() => currentRole.value === 'owner' || currentRole.value === 'admin')
-  /** 观察者：全局只读，前端隐藏写操作（后端 WorkspaceRbacFilter 兜底强制） */
-  const isReadOnly = computed(() => currentRole.value === 'observer')
+  /** 观察者 / 审计员：全局只读，前端隐藏写操作（后端 WorkspaceRbacFilter 兜底强制） */
+  const isReadOnly = computed(() => currentRole.value === 'observer' || currentRole.value === 'auditor')
+  /** 审计员：只读 + 可查审计日志与审批列表（课题⑩） */
+  const isAuditor = computed(() => currentRole.value === 'auditor')
+  /** 审批权：仅 owner / admin（双人原则由后端按提交人校验兜底） */
+  const canApprove = computed(() => isAdmin.value)
+  /** 审计日志可见：owner / admin / auditor */
+  const canViewAudit = computed(() => isAdmin.value || isAuditor.value)
 
   /** 把后端返回的用户信息写入内存 + 本地（不含 token） */
   function applyAuth(data: { userId: string; email: string; nickname: string; workspaceId: string }) {
@@ -129,6 +135,9 @@ export const useAuthStore = defineStore('auth', () => {
     currentRole,
     isAdmin,
     isReadOnly,
+    isAuditor,
+    canApprove,
+    canViewAudit,
     login,
     register,
     fetchMe,

@@ -7,11 +7,16 @@ import com.fasterxml.jackson.annotation.JsonValue;
 /**
  * Agent 状态枚举
  * 封装状态值和状态转换规则
+ *
+ * 发布审批（课题⑩）：发布不再可直达，DRAFT/TESTING 须先 SUBMIT_REVIEW 进入
+ * PENDING_REVIEW，由他人 APPROVE 后才到 PUBLISHED（双人原则，提交人不可自审）。
+ * PENDING_REVIEW 期间 Agent 冻结（不可编辑/删除/停用），保证「审什么 = 发什么」。
  */
 public enum AgentStatus {
 
     DRAFT("draft", "草稿"),
     TESTING("testing", "测试中"),
+    PENDING_REVIEW("pending_review", "审批中"),
     PUBLISHED("published", "已发布"),
     STOPPED("stopped", "已停用"),
     ARCHIVED("archived", "已归档");
@@ -47,15 +52,21 @@ public enum AgentStatus {
         return switch (this) {
             case DRAFT -> switch (action) {
                 case START_TEST -> TESTING;
-                case PUBLISH -> PUBLISHED;  // 允许从草稿直接发布
+                case SUBMIT_REVIEW -> PENDING_REVIEW;
                 case ARCHIVE -> ARCHIVED;
                 default -> throw new BusinessException(3004, "草稿状态不能执行: " + action.getDescription());
             };
             case TESTING -> switch (action) {
-                case PUBLISH -> PUBLISHED;
+                case SUBMIT_REVIEW -> PENDING_REVIEW;
                 case REVERT_TO_DRAFT -> DRAFT;
                 case ARCHIVE -> ARCHIVED;
                 default -> throw new BusinessException(3004, "测试中状态不能执行: " + action.getDescription());
+            };
+            case PENDING_REVIEW -> switch (action) {
+                case APPROVE -> PUBLISHED;
+                case REJECT -> DRAFT;
+                case WITHDRAW -> DRAFT;
+                default -> throw new BusinessException(3004, "审批中状态不能执行: " + action.getDescription());
             };
             case PUBLISHED -> switch (action) {
                 case STOP -> STOPPED;
@@ -71,7 +82,7 @@ public enum AgentStatus {
     }
 
     /**
-     * 是否可编辑（只有草稿和测试中可以修改配置）
+     * 是否可编辑（只有草稿和测试中可以修改配置；审批中冻结，保证审什么 = 发什么）
      */
     public boolean isEditable() {
         return this == DRAFT || this == TESTING;

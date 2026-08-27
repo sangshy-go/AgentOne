@@ -118,6 +118,38 @@ class WorkspaceRbacFilterTest {
     }
 
     @Test
+    void doFilter_auditorWrite_returns2004() throws Exception {
+        // 课题⑩：auditor 与 observer 同等只读
+        loginAs("auditor");
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/publish-requests/req-1/approve");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicBoolean chainCalled = new AtomicBoolean(false);
+        filter.doFilter(request, response, (req, res) -> chainCalled.set(true));
+
+        assertEquals(403, response.getStatus());
+        assertEquals(2004, objectMapper.readTree(response.getContentAsString()).get("code").asInt());
+        assertFalse(chainCalled.get(), "auditor 的写请求不应到达控制器");
+    }
+
+    @Test
+    void doFilter_auditorRead_passes() throws Exception {
+        // auditor 可读（审计日志/审批列表的门禁由各 Controller/Service 按角色细化）
+        loginAs("auditor");
+        assertTrue(run("GET", "/api/audit-logs"));
+    }
+
+    @Test
+    void doFilter_auditorAccessMembers_returns2003() throws Exception {
+        loginAs("auditor");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/members");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        filter.doFilter(request, response, (req, res) -> { });
+
+        assertEquals(403, response.getStatus());
+        assertEquals(2003, objectMapper.readTree(response.getContentAsString()).get("code").asInt());
+    }
+
+    @Test
     void doFilter_developerAccessMembers_returns2003() throws Exception {
         loginAs("developer");
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/members");

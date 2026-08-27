@@ -3,7 +3,7 @@
     <h1 class="page-title">监控日志</h1>
     <p class="page-desc">当前工作空间的对话会话与 Skill 调用链</p>
 
-    <n-tabs v-model:value="activeTab" type="line">
+    <n-tabs v-model:value="activeTab" type="line" @update:value="onTabChange">
       <!-- ========== 会话 ========== -->
       <n-tab-pane name="sessions" tab="会话列表">
         <!-- 下钻：会话时间线 -->
@@ -123,6 +123,53 @@
         </div>
         <n-empty v-if="!skillLoading && skillCalls.length === 0" description="暂无 Skill 调用记录" style="margin-top: 40px;" />
       </n-tab-pane>
+
+      <!-- ========== 审计日志（课题⑩：仅 owner/admin/auditor 可见，后端 2003 兜底） ========== -->
+      <n-tab-pane v-if="authStore.canViewAudit" name="audit" tab="审计日志">
+        <div class="filter-bar">
+          <n-input
+            v-model:value="auditFilter.action"
+            placeholder="动作（如 create）"
+            clearable
+            style="width: 160px;"
+            @keyup.enter="resetAndLoadAuditLogs"
+            @clear="resetAndLoadAuditLogs"
+          />
+          <n-input
+            v-model:value="auditFilter.resourceType"
+            placeholder="资源类型（如 agents）"
+            clearable
+            style="width: 190px;"
+            @keyup.enter="resetAndLoadAuditLogs"
+            @clear="resetAndLoadAuditLogs"
+          />
+          <n-input
+            v-model:value="auditFilter.keyword"
+            placeholder="搜索操作人 / 资源 ID"
+            clearable
+            style="width: 220px;"
+            @keyup.enter="resetAndLoadAuditLogs"
+            @clear="resetAndLoadAuditLogs"
+          />
+          <n-button type="primary" ghost @click="resetAndLoadAuditLogs">查询</n-button>
+        </div>
+
+        <n-data-table
+          :columns="auditColumns"
+          :data="auditLogs"
+          :bordered="false"
+          :loading="auditLoading"
+        />
+        <div v-if="auditTotal > auditPageSize" class="pagination-wrap">
+          <n-pagination
+            :page="auditPage"
+            :page-size="auditPageSize"
+            :item-count="auditTotal"
+            @update:page="handleAuditPageChange"
+          />
+        </div>
+        <n-empty v-if="!auditLoading && auditLogs.length === 0" description="暂无审计日志" style="margin-top: 40px;" />
+      </n-tab-pane>
     </n-tabs>
   </div>
 </template>
@@ -134,15 +181,18 @@ import {
   NTag, NEmpty, NPagination, NEllipsis, useMessage,
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
-import type { MonitorSession, SkillCallRecord } from '@/types'
+import type { MonitorSession, SkillCallRecord, AuditLog } from '@/types'
 import { getMonitorSessions, getSkillCalls } from '@/services/monitor'
+import { fetchAuditLogs } from '@/services/approval'
 import { listAgents } from '@/services/agent'
 import { listAgentSkillBindings } from '@/services/skill'
+import { useAuthStore } from '@/stores/auth'
 import SessionTimeline from './SessionTimeline.vue'
 
 const message = useMessage()
+const authStore = useAuthStore()
 
-const activeTab = ref<'sessions' | 'skill-calls'>('sessions')
+const activeTab = ref<'sessions' | 'skill-calls' | 'audit'>('sessions')
 const viewMode = ref<'list' | 'timeline'>('list')
 const selectedSessionId = ref('')
 
@@ -292,6 +342,56 @@ function openSkillCallSession(row: SkillCallRecord) {
   viewMode.value = 'timeline'
 }
 
+// ---------- 审计日志（课题⑩，首次切到该 Tab 才加载） ----------
+const auditLogs = ref<AuditLog[]>([])
+const auditLoading = ref(false)
+const auditLoaded = ref(false)
+const auditPage = ref(1)
+const auditPageSize = ref(20)
+const auditTotal = ref(0)
+const auditFilter = reactive({
+  action: '',
+  resourceType: '',
+  keyword: '',
+})
+
+function onTabChange(tab: string) {
+  if (tab === 'audit' && !auditLoaded.value) {
+    loadAuditLogs()
+  }
+}
+
+async function loadAuditLogs() {
+  auditLoading.value = true
+  try {
+    const res = await fetchAuditLogs({
+      action: auditFilter.action || undefined,
+      resourceType: auditFilter.resourceType || undefined,
+      keyword: auditFilter.keyword || undefined,
+      page: auditPage.value,
+      size: auditPageSize.value,
+    })
+    const data = res.data.data
+    auditLogs.value = data?.records || []
+    auditTotal.value = data?.total || 0
+    auditLoaded.value = true
+  } catch (e: any) {
+    message.error(e?.message || '加载审计日志失败')
+  } finally {
+    auditLoading.value = false
+  }
+}
+
+function resetAndLoadAuditLogs() {
+  auditPage.value = 1
+  loadAuditLogs()
+}
+
+function handleAuditPageChange(p: number) {
+  auditPage.value = p
+  loadAuditLogs()
+}
+
 // ---------- 表格列 ----------
 function formatTime(t: string) {
   return t ? t.replace('T', ' ').slice(0, 16) : '—'
@@ -338,6 +438,34 @@ const skillColumns: DataTableColumns<SkillCallRecord> = [
     },
   },
   { title: '时间', key: 'createdAt', width: 160, render(row) { return formatTime(row.createdAt) } },
+]
+
+const auditColumns: DataTableColumns<AuditLog> = [
+  { title: '时间', key: 'createdAt', width: 160, render(row) { return formatTime(row.createdAt) } },
+  {
+    title: '操作人',
+    key: 'operatorEmail',
+    width: 210,
+    ellipsis: { tooltip: true },
+    render(row) { return row.operatorEmail || row.operatorId },
+  },
+  { title: '动作', key: 'action', width: 110 },
+  {
+    title: '资源',
+    key: 'resourceType',
+    width: 220,
+    ellipsis: { tooltip: true },
+    render(row) { return row.resourceId ? `${row.resourceType} / ${row.resourceId}` : row.resourceType },
+  },
+  {
+    title: '详情',
+    key: 'path',
+    ellipsis: { tooltip: true },
+    render(row) {
+      if (!row.path) return h('span', { style: 'color: var(--text-muted)' }, '—')
+      return `${row.method || ''} ${row.path}`
+    },
+  },
 ]
 
 onMounted(async () => {

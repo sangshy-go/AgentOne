@@ -162,6 +162,7 @@ function getGradient(name: string) {
 function statusLabel(status: string) {
   const map: Record<string, string> = {
     published: '已发布',
+    pending_review: '审批中',
     testing: '测试中',
     draft: '草稿',
     stopped: '已停用',

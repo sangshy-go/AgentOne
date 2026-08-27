@@ -31,8 +31,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class MemberServiceImpl implements MemberService {
 
-    /** 可通过成员管理授予的角色（owner 不可授予/变更） */
-    private static final Set<String> ASSIGNABLE_ROLES = Set.of("admin", "developer", "observer");
+    /** 可通过成员管理授予的角色（owner 不可授予/变更）；课题⑩ 增 auditor 审计员 */
+    private static final Set<String> ASSIGNABLE_ROLES = Set.of("admin", "developer", "observer", "auditor");
 
     private final UserWorkspaceMapper userWorkspaceMapper;
     private final UserLookupService userLookupService;
@@ -140,7 +140,7 @@ public class MemberServiceImpl implements MemberService {
 
     private void validateRole(String role) {
         if (role == null || !ASSIGNABLE_ROLES.contains(role)) {
-            throw new BusinessException(2005, "无效的角色，可选值：admin / developer / observer");
+            throw new BusinessException(2005, "无效的角色，可选值：admin / developer / observer / auditor");
         }
     }
 }

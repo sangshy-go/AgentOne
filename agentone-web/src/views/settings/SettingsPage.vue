@@ -153,6 +153,7 @@ const ROLE_LABELS: Record<string, string> = {
   admin: '管理员',
   developer: '开发者',
   observer: '观察者',
+  auditor: '审计员',
 }
 
 function roleLabel(role: string) {
@@ -171,6 +172,7 @@ const assignableRoleOptions = [
   { label: '管理员', value: 'admin' },
   { label: '开发者', value: 'developer' },
   { label: '观察者', value: 'observer' },
+  { label: '审计员', value: 'auditor' },
 ]
 
 const showAdd = ref(false)

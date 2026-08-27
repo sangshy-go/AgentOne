@@ -446,6 +446,18 @@ a:hover {
   animation: pulseBlue 2s ease-in-out infinite;
 }
 
+/* 审批中：橙色呼吸点，表示"等待人工复核"（课题⑩） */
+.status-pending_review {
+  color: var(--orange);
+  background: var(--orange-bg);
+  border-color: var(--orange-border);
+}
+
+.status-pending_review .status-dot {
+  background: var(--orange);
+  animation: pulseOrange 2s ease-in-out infinite;
+}
+
 /* 草稿：灰色空心点，表示"未上线" */
 .status-draft .status-dot {
   background: transparent;
@@ -484,9 +496,15 @@ a:hover {
   50% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0); }
 }
 
+@keyframes pulseOrange {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(245, 158, 11, 0); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .status-published .status-dot,
-  .status-testing .status-dot {
+  .status-testing .status-dot,
+  .status-pending_review .status-dot {
     animation: none;
   }
 }

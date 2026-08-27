@@ -49,11 +49,6 @@ public class AgentController {
         return Result.ok();
     }
 
-    @PostMapping("/{id}/publish")
-    public Result<AgentVO> publish(@PathVariable String id) {
-        return Result.ok(agentService.publish(id));
-    }
-
     @PostMapping("/{id}/stop")
     public Result<AgentVO> stop(@PathVariable String id) {
         return Result.ok(agentService.stop(id));

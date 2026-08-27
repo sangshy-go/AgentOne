@@ -92,7 +92,8 @@
 
       <!-- Content -->
       <div class="content">
-        <router-view />
+        <!-- key 绑定 workspaceId：切换工作空间后强制重挂载当前页，触发各页 onMounted 重新加载数据 -->
+        <router-view :key="authStore.workspaceId" />
       </div>
     </main>
   </div>
@@ -181,6 +182,11 @@ const navGroups = [
     label: '管理',
     items: [
       {
+        key: 'Approvals',
+        label: '发布审批',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>',
+      },
+      {
         key: 'Monitor',
         label: '监控日志',
         icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
@@ -206,6 +212,7 @@ const currentRouteName = computed(() => {
     Models: '模型管理',
     ApiKeys: 'API Key',
     ImBots: 'IM 机器人',
+    Approvals: '发布审批',
     Monitor: '监控日志',
     Settings: '工作空间',
   }
@@ -217,6 +224,7 @@ const ROLE_LABELS: Record<string, string> = {
   admin: '管理员',
   developer: '开发者',
   observer: '观察者',
+  auditor: '审计员',
 }
 const roleLabel = computed(() => ROLE_LABELS[authStore.currentRole] || authStore.currentRole)
 

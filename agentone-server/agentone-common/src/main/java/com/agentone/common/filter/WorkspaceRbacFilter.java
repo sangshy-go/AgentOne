@@ -81,8 +81,9 @@ public class WorkspaceRbacFilter extends OncePerRequestFilter {
             writeError(response, HttpServletResponse.SC_FORBIDDEN, 2002, "无权访问该工作空间");
             return;
         }
-        if ("observer".equals(role) && WRITE_METHODS.contains(request.getMethod())) {
-            writeError(response, HttpServletResponse.SC_FORBIDDEN, 2004, "观察者角色为只读，不允许该操作");
+        // observer / auditor 均为只读角色（课题⑩：auditor 额外可查审计日志与审批列表，读操作此处放行）
+        if (("observer".equals(role) || "auditor".equals(role)) && WRITE_METHODS.contains(request.getMethod())) {
+            writeError(response, HttpServletResponse.SC_FORBIDDEN, 2004, "当前角色为只读，不允许该操作");
             return;
         }
         if (path.startsWith("/api/members") && !"admin".equals(role) && !"owner".equals(role)) {

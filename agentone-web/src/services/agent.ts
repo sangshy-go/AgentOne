@@ -25,8 +25,3 @@ export function updateAgent(id: string, data: Partial<Agent>) {
 export function deleteAgent(id: string) {
   return api.delete<Result<void>>(`/api/agents/${id}`)
 }
-
-/** 发布 Agent */
-export function publishAgent(id: string) {
-  return api.post<Result<void>>(`/api/agents/${id}/publish`)
-}
