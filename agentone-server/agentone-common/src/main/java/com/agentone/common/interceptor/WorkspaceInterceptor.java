@@ -39,6 +39,9 @@ public class WorkspaceInterceptor implements TenantLineHandler {
             // skill_package_file 无 workspace_id 列，经父实体 skill 的 workspace_id 间接隔离
             // （服务层访问前一律先校验父 skill 归属，同 document/document_chunk 模式）
             "skill_package_file",
+            // im_sender_session 无 workspace_id 列（bot_id+sender_id 复合主键），
+            // 经父实体 im_bot 的 workspace_id 间接隔离；访问前一律先解析并校验机器人归属
+            "im_sender_session",
             "flyway_schema_history",
             "model_provider",
             "model"

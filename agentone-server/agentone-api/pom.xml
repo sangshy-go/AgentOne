@@ -41,6 +41,10 @@
             <groupId>com.agentone</groupId>
             <artifactId>agentone-apikey</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.agentone</groupId>
+            <artifactId>agentone-im</artifactId>
+        </dependency>
 
         <!-- Spring Boot Actuator（健康检查） -->
         <dependency>

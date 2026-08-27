@@ -263,3 +263,17 @@ export interface Member {
   role: string
   joinedAt: string
 }
+
+/** IM 机器人 */
+export interface ImBot {
+  id: string
+  name: string
+  platform: 'dingtalk' | 'wecom'
+  mode: 'webhook' | 'callback'
+  agentId: string | null
+  status: 'active' | 'disabled'
+  createdBy: string
+  createdAt: string
+  /** 配置掩码摘要（凭证不回传） */
+  configMasked: Record<string, string>
+}

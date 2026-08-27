@@ -44,6 +44,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             "/api/auth/logout",
             "/actuator/health",
             "/v1/",
+            "/api/im/callback/",  // IM 平台回调：无 JWT，由平台签名机制鉴权（见 ImCallbackController）
             "/error"
     };
 

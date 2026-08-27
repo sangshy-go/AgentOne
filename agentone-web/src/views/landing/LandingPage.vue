@@ -221,6 +221,35 @@
           </div>
         </div>
 
+        <!-- IM 原生接入 -->
+        <div class="b-card b-wide reveal">
+          <div class="b-wide-main">
+            <div class="b-icon blue">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M12 8V4H8" /><rect width="16" height="12" x="4" y="8" rx="2" />
+                <path d="M2 14h2" /><path d="M20 14h2" /><path d="M15 13v2" /><path d="M9 13v2" />
+              </svg>
+            </div>
+            <div class="b-wide-body">
+              <div class="b-kick">EMBEDDED</div>
+              <h3 class="b-title">钉钉原生接入</h3>
+              <p class="b-tag">不用多开一个系统，Agent 就在工作群里。</p>
+              <p class="b-desc">钉钉群通知一键直达；@机器人触发 Agent 多轮对话，群里每人独立会话。凭证加密落库、平台签名验签，IM 对话同样进会话日志、可追溯。</p>
+            </div>
+          </div>
+          <div class="b-wide-providers">
+            <div class="im-demo">
+              <div class="im-row im-in">@面试 Agent 面试一共几轮？</div>
+              <div class="im-row im-out">默认 3 轮，重点考技术知识和项目深挖。</div>
+            </div>
+            <div class="prov-cap">已接入 · 平台 / 形态</div>
+            <div class="providers">
+              <span class="provider">钉钉 · 通知推送</span>
+              <span class="provider">钉钉 · @对话</span>
+            </div>
+          </div>
+        </div>
+
         <!-- 信创友好 -->
         <div class="b-card b-wide reveal">
           <div class="b-wide-main">
@@ -453,6 +482,7 @@ const compare = [
   { dim: '审计合规', dify: '弱', fastgpt: '弱', us: '全量留痕 · 可导出' },
   { dim: 'RAG 质量', dify: '不可度量', fastgpt: '较强 · 不可度量', us: '可度量 · 可回归' },
   { dim: '私有化', dify: '支持', fastgpt: '支持', us: '一键 · 信创友好' },
+  { dim: '企业 IM 接入', dify: '需自建对接', fastgpt: '部分支持', us: '钉钉 · 原生双向' },
 ]
 </script>
 
@@ -1110,6 +1140,37 @@ const compare = [
   background: linear-gradient(160deg, #F7F8FE 0%, #EDF1FF 100%);
   border: 1px solid var(--border);
 }
+.im-demo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.im-row {
+  max-width: 92%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.im-in {
+  align-self: flex-start;
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-top-left-radius: 3px;
+}
+
+.im-out {
+  align-self: flex-end;
+  background: #FFFFFF;
+  border: 1px solid var(--indigo-border);
+  color: var(--text);
+  border-top-right-radius: 3px;
+}
+
 .prov-cap {
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 10.5px;
