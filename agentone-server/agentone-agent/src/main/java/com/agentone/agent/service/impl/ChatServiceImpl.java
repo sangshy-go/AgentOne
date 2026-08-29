@@ -86,6 +86,12 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ChatServiceImpl implements ChatService {
 
+    /** 会话默认标题，也是自动标题的覆盖判定标记（非默认标题视为已人工命名，不覆盖） */
+    private static final String DEFAULT_SESSION_TITLE = "新对话";
+
+    /** 会话自动标题的文本上限（超出截断加省略号） */
+    private static final int SESSION_TITLE_MAX_LEN = 30;
+
     private final AgentMapper agentMapper;
     private final ChatSessionMapper sessionMapper;
     private final ChatMessageMapper messageMapper;
@@ -128,6 +134,9 @@ public class ChatServiceImpl implements ChatService {
 
         // 3. 构建用户消息内容（校验附件归属、多模态 blocks + 附件元信息 JSON）
         UserContent userContent = buildUserContent(dto);
+
+        // 3.1 首条消息自动标题：用任务描述替代默认「新对话」
+        autoTitleSession(session, dto.getMessage(), userContent.firstFileName());
 
         // 4. 先保存用户消息（RAG 检索需要当前消息作为 query；落库 content 保持纯文本）
         saveUserMessage(session.getId(), nullSafe(dto.getMessage()), userContent.attachmentsJson());
@@ -210,6 +219,9 @@ public class ChatServiceImpl implements ChatService {
 
             // 3. 构建用户消息内容（校验附件归属、多模态 blocks + 附件元信息 JSON）
             UserContent userContent = buildUserContent(dto);
+
+            // 3.1 首条消息自动标题：用任务描述替代默认「新对话」
+            autoTitleSession(session, dto.getMessage(), userContent.firstFileName());
 
             // 4. 先保存用户消息（RAG 检索需要当前消息作为 query；落库 content 保持纯文本）
             saveUserMessage(session.getId(), nullSafe(dto.getMessage()), userContent.attachmentsJson());
@@ -456,10 +468,14 @@ public class ChatServiceImpl implements ChatService {
 
         List<ContentBlock> blocks = new ArrayList<>();
         List<Map<String, Object>> attachMeta = new ArrayList<>();
+        String firstFileName = null;
 
         if (hasAttach) {
             List<ChatAttachmentDO> attachments = attachmentService.listByIds(dto.getAttachmentIds());
             for (ChatAttachmentDO a : attachments) {
+                if (firstFileName == null) {
+                    firstFileName = a.getFileName();
+                }
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("id", a.getId());
                 m.put("kind", a.getKind());
@@ -504,7 +520,7 @@ public class ChatServiceImpl implements ChatService {
         } catch (Exception e) {
             attachmentsJson = null;
         }
-        return new UserContent(blocks, attachmentsJson);
+        return new UserContent(blocks, attachmentsJson, firstFileName);
     }
 
     /**
@@ -519,9 +535,10 @@ public class ChatServiceImpl implements ChatService {
     }
 
     /**
-     * 构建用户消息的返回结构：内容块 + 附件元信息 JSON（用于落库 chat_message.attachments）。
+     * 构建用户消息的返回结构：内容块 + 附件元信息 JSON（用于落库 chat_message.attachments）
+     * + 首个附件文件名（供纯附件会话的自动标题使用）。
      */
-    private record UserContent(List<ContentBlock> blocks, String attachmentsJson) {}
+    private record UserContent(List<ContentBlock> blocks, String attachmentsJson, String firstFileName) {}
 
     /**
      * 未配置任何可用模型时提前失败（6018）。
@@ -690,13 +707,48 @@ public class ChatServiceImpl implements ChatService {
         ChatSessionDO session = new ChatSessionDO();
         session.setAgentId(agent.getId());
         session.setUserId(RuntimeContext.getUserId());
-        session.setTitle("新对话");
+        session.setTitle(DEFAULT_SESSION_TITLE);
         session.setTokenCount(0L);
         session.setMessageCount(0);
         session.setCreatedAt(LocalDateTime.now());
         session.setUpdatedAt(LocalDateTime.now());
         sessionMapper.insert(session);
         return session;
+    }
+
+    /**
+     * 会话首条消息自动标题：用消息文本（空白压缩后截断）替代默认「新对话」，
+     * 让会话列表能按任务内容区分；纯附件会话用「附件：文件名」。
+     *
+     * 覆盖条件：会话尚无任何完成轮次（messageCount == 0）且标题仍为默认值，
+     * 避免覆盖通过 rename 接口的人工命名。仅更新 title 列，updatedAt 由后续
+     * incrementSessionStats 统一维护。
+     */
+    void autoTitleSession(ChatSessionDO session, String messageText, String firstFileName) {
+        if (session.getMessageCount() == null || session.getMessageCount() != 0) {
+            return;
+        }
+        if (!DEFAULT_SESSION_TITLE.equals(session.getTitle())) {
+            return;
+        }
+        String title = null;
+        if (messageText != null && !messageText.isBlank()) {
+            String normalized = messageText.strip().replaceAll("\\s+", " ");
+            title = normalized.length() > SESSION_TITLE_MAX_LEN
+                    ? normalized.substring(0, SESSION_TITLE_MAX_LEN) + "…"
+                    : normalized;
+        } else if (firstFileName != null) {
+            title = "附件：" + firstFileName;
+        }
+        if (title == null) {
+            return;
+        }
+        session.setTitle(title);
+        com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<ChatSessionDO> upd =
+                new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<>();
+        upd.eq(ChatSessionDO::getId, session.getId())
+                .set(ChatSessionDO::getTitle, title);
+        sessionMapper.update(null, upd);
     }
 
     private String buildSystemPrompt(AgentDO agent, String sessionId) {

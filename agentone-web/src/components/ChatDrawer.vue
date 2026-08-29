@@ -526,12 +526,14 @@ async function handleSend() {
       await loadSessions()
     },
     // onError
-    (err) => {
+    async (err) => {
       message.error(`对话失败: ${err}`)
       streaming.value = false
       streamingContent.value = ''
       streamingThinking.value = ''
       abortController.value = null
+      // 失败轮次也落库（user + 错误占位），刷新列表让自动标题/计数即时可见
+      await loadSessions()
     },
     attachmentIds
   )

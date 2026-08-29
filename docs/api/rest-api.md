@@ -127,6 +127,8 @@ draft ⇄ testing ──提交发布审批──→ pending_review ──他人�
 **ChatRequestDTO**：`{agentId*, message?, attachmentIds?, sessionId?, stream?}`
 `message` 与 `attachmentIds` 至少其一。
 
+**会话标题**：新建会话默认「新对话」；首条消息落库时自动以消息文本命名（空白压缩、30 字截断加省略号），纯附件会话用「附件：文件名」。已有对话轮次或已 rename 的会话不覆盖。
+
 **附件**：
 - 图片：png/jpg/jpeg/webp/gif ≤10MB；文档：pdf/docx/txt/md/csv ≤20MB
 - 后端 Tika 嗅探 MIME（防扩展名伪装），拒绝 `text/html`、`application/xhtml+xml`、`image/svg+xml`

@@ -87,7 +87,7 @@
     </div>
 
     <!-- Empty state -->
-    <div v-else-if="!loading" class="page-card" style="text-align: center; padding: 80px 24px;">
+    <div v-if="!loading && servers.length === 0" class="page-card" style="text-align: center; padding: 80px 24px;">
       <div style="margin-bottom: 16px;">
         <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" style="color: var(--primary); opacity: 0.4;">
           <rect x="2" y="2" width="20" height="8" rx="2" />

@@ -117,7 +117,7 @@
     </div>
 
     <!-- Empty state -->
-    <div v-else class="page-card" style="text-align: center; padding: 80px 24px;">
+    <div v-if="providers.length === 0" class="page-card" style="text-align: center; padding: 80px 24px;">
       <div style="margin-bottom: 16px;">
         <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" style="color: var(--primary); opacity: 0.4;">
           <path d="M12 2L2 7l10 5 10-5-10-5z" />
