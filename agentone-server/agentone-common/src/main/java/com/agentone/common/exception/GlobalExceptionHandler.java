@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * 全局异常处理器
@@ -70,6 +71,13 @@ public class GlobalExceptionHandler {
     public Result<Void> handleMissingParam(MissingServletRequestParameterException e) {
         log.warn("缺少请求参数: {}", e.getMessage());
         return Result.fail(ResultCode.BAD_REQUEST.getCode(), "缺少请求参数: " + e.getParameterName());
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public Result<Void> handleNoResource(NoResourceFoundException e) {
+        log.warn("接口不存在: {} {}", e.getHttpMethod(), e.getResourcePath());
+        return Result.fail(HttpStatus.NOT_FOUND.value(), "接口不存在");
     }
 
     @ExceptionHandler(Exception.class)

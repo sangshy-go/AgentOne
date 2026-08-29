@@ -185,7 +185,12 @@ public class ChatServiceImpl implements ChatService {
             // 模型/引擎调用失败：保存 assistant 错误占位，避免留下孤立 user 消息（Bug5）
             saveAssistantError(session.getId(), RuntimeContext.getUserId(),
                     RuntimeContext.getWorkspaceId(), "[错误: " + safeMsg(e) + "]");
-            throw e;
+            if (e instanceof BusinessException) {
+                throw e;
+            }
+            // 模型服务侧失败（配额/限流/网络等）转业务错误码，避免裸 500——
+            // 与 SSE 通路的 error 事件对齐，API 消费方可按码区分「模型不可用」与内部错误
+            throw new BusinessException(6019, "模型服务调用失败，请稍后重试或检查模型配置：" + safeMsg(e));
         }
 
         // 10. 返回响应
