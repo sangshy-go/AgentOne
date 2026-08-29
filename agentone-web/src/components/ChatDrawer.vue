@@ -17,7 +17,7 @@
               </svg>
             </div>
             <div>
-              <div class="drawer-title-text">对话测试</div>
+              <div class="drawer-title-text">{{ agent?.status === 'published' ? '试用' : '对话测试' }}</div>
               <div class="drawer-title-sub">{{ agent?.name || '' }}</div>
             </div>
           </div>

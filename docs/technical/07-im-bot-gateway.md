@@ -83,7 +83,7 @@ ImBotServiceImpl.handleIncoming(botId, incoming)
 ```
 POST /api/im/bots/{id}/send
   ├─ loadOwnedBot（带 workspace 条件，防越权）
-  ├─ status != active → 5202
+  ├─ 无启停门禁：手动测试通道，测试发送恰在启用前进行；启停只管控回调流量
   ├─ decryptConfig → webhookUrl + secret
   └─ DingTalkSender.send
        ├─ buildUrl：追加 timestamp + sign（HmacSHA256(ts+"\n"+secret, secret) → base64 → urlencode）
@@ -182,7 +182,7 @@ CREATE TABLE im_sender_session (
 );
 ```
 
-要点：`config_encrypted` 存 JSON 序列化后的整体密文；`im_sender_session` 随 bot 删除级联清理，保证"删除机器人即清理会话映射"语义。
+要点：`config_encrypted` 存 JSON 序列化后的整体密文；`im_sender_session` 随 bot 删除级联清理，保证"删除机器人即清理会话映射"语义。`status` 的 DDL 默认值虽为 `active`（V23 迁移不可变），但创建时由服务层显式写入 `disabled`——新机器人一律先测试后启用。
 
 ## 5. API 设计
 
@@ -191,10 +191,10 @@ CREATE TABLE im_sender_session (
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/im/bots` | 列表（config 只回掩码 `configMasked`） |
-| POST | `/api/im/bots` | 创建（组合校验 + 加密落库） |
+| POST | `/api/im/bots` | 创建（组合校验 + 加密落库，**默认 disabled**：先测试发送验证凭证，手动启用后才接收真实流量） |
 | PUT | `/api/im/bots/{id}` | 更新名称/状态/绑定/凭证 |
 | DELETE | `/api/im/bots/{id}` | 删除（级联清理映射） |
-| POST | `/api/im/bots/{id}/send` | 出站发送（仅钉钉 webhook 支持，其余 5206） |
+| POST | `/api/im/bots/{id}/send` | 出站测试发送（仅钉钉 webhook 支持，其余 5206；不受启停状态限制） |
 
 公开回调端点（JwtAuthFilter 白名单 `/api/im/callback/`）：
 
@@ -253,7 +253,8 @@ E2E 验证（独立 Python 脚本模拟平台回调，不依赖真实平台）�
 
 - **卡片列表**：平台色图标 + 平台/模式/状态徽章 + 绑定 Agent + 掩码凭证行；callback 模式额外展示**回调地址行 + 一键复制**（基址取 `window.location.origin`，开发环境经 Vite 同源代理直达后端，生产同源部署同样成立）。
 - **创建弹窗平台区**：钉钉可选；**企业微信 / 飞书为「待建设」占位卡**（虚线灰底、橙色徽标、不可选）。模式区按平台联动（企微仅 callback，入口降级后实际只走钉钉）。
-- **callback 创建引导**：选「对话（callback）」后表单顶部展示四步引导——① open.dingtalk.com 建企业内部应用并开启机器人能力；② 复制 AppSecret 填入创建并绑定已发布 Agent；③ 创建后复制卡片回调地址回填「消息接收地址」；④ 发版加群 @机器人（回调需公网可达）。
+- **callback 创建引导**：选「对话（callback）」后表单顶部展示四步引导——① open.dingtalk.com 建企业内部应用并开启机器人能力；② 复制 AppSecret 填入创建并绑定已发布 Agent；③ 创建后复制卡片回调地址回填「消息接收地址」；④ 卡片上点「启用」后发版加群 @机器人（回调需公网可达）。
+- **测试期门禁**：机器人创建即 `disabled`，「发送测试」按钮仅在非启用态展示（钉钉 webhook）；Agent「测试对话」按钮仅在发布前（草稿/测试中/审批中）展示——测试动作只属于测试期，启用/发布后即收起。
 - **凭证编辑交互**：编辑时凭证输入框默认为空 = 保持不变；轮换需填全整套，保存后整体加密覆盖。
 
 ### 9.2 产品曝光与降级口径

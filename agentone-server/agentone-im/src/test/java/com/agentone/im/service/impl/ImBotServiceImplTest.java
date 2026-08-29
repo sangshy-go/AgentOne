@@ -39,14 +39,13 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
  * ImBotServiceImpl 业务规则单测（课题⑤）：
- * 平台/模式组合校验 5202、SSRF 防护、凭证加密与掩码、发送门禁 5202/5206、
+ * 平台/模式组合校验 5202、SSRF 防护、凭证加密与掩码、创建默认停用、发送模式门禁 5206、
  * 回调入口 handleIncoming 的机器人/Agent 门禁与发送者会话映射
  */
 @ExtendWith(MockitoExtension.class)
@@ -175,7 +174,8 @@ class ImBotServiceImplTest {
 
         // 落库必须是密文，且能往返解密
         assertFalse(saved.getConfigEncrypted().contains(DINGTALK_URL));
-        assertEquals("active", saved.getStatus());
+        // 创建即停用（测试期）：先测试发送验证凭证，手动启用后才接收真实流量
+        assertEquals("disabled", saved.getStatus());
         assertEquals("ws-1", saved.getWorkspaceId());
         // VO 只回掩码
         assertEquals("https://oapi.dingtalk.com/robot/send?access_token=***", vo.getConfigMasked().get("webhookUrl"));
@@ -193,11 +193,15 @@ class ImBotServiceImplTest {
     }
 
     @Test
-    void send_disabledBot_throws5202() {
-        when(imBotMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(bot("dingtalk", "webhook", "disabled"));
-        BusinessException ex = assertThrows(BusinessException.class, () -> service.send("bot-1", sendDto()));
-        assertEquals(5202, ex.getCode());
-        verify(dingTalkSender, never()).send(anyString(), any(), any(), any(), any());
+    void send_disabledBot_stillSendsForPreActivationTest() {
+        // 启用前测试：停用态机器人可正常发送测试消息（启停只管控回调流量，不管控手动测试）
+        ImBotDO ding = bot("dingtalk", "webhook", "disabled");
+        ding.setConfigEncrypted(crypto.encrypt("{\"webhookUrl\":\"" + DINGTALK_URL + "\"}"));
+        when(imBotMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(ding);
+
+        service.send("bot-1", sendDto());
+
+        verify(dingTalkSender).send(DINGTALK_URL, null, "text", null, "hello");
     }
 
     @Test

@@ -67,12 +67,12 @@
           </svg>
         </div>
         <!-- User Dropdown -->
-        <div v-if="showUserMenu" class="user-dropdown">
+        <div v-if="showUserMenu && !collapsed" class="user-dropdown">
           <div class="user-dropdown-item" @click="handleMenuClick('Settings'); showUserMenu = false">个人设置</div>
           <div class="user-dropdown-item" @click="handleLogout">退出登录</div>
         </div>
         <!-- Collapse Trigger -->
-        <div class="collapse-trigger" @click="collapsed = !collapsed">
+        <div class="collapse-trigger" @click="toggleCollapse">
           <svg :style="{ transform: collapsed ? 'rotate(180deg)' : '' }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M15 18l-6-6 6-6" />
           </svg>
@@ -235,6 +235,13 @@ const currentWorkspaceName = computed(() => {
 
 function handleMenuClick(key: string) {
   router.push({ name: key })
+  showWsDropdown.value = false
+}
+
+/** 收起/展开侧边栏时关闭已打开的下拉弹框，避免弹框残留或再次展开时复活 */
+function toggleCollapse() {
+  collapsed.value = !collapsed.value
+  showUserMenu.value = false
   showWsDropdown.value = false
 }
 

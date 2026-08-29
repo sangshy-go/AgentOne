@@ -63,7 +63,7 @@
           </div>
           <div class="bot-actions">
             <button
-              v-if="bot.platform === 'dingtalk' && bot.mode === 'webhook'"
+              v-if="bot.platform === 'dingtalk' && bot.mode === 'webhook' && bot.status !== 'active'"
               class="action-btn action-btn-primary"
               @click="openSend(bot)"
             >
@@ -224,7 +224,7 @@
                   <li>登录 open.dingtalk.com → 应用开发 → 企业内部开发 → 创建应用，并开启「机器人」能力；</li>
                   <li>在应用的「凭证与基础信息」复制 AppSecret 填入下方，创建本机器人并绑定已发布 Agent；</li>
                   <li>创建成功后，在机器人卡片上复制「回调地址」，填入钉钉开放平台 → 该应用 → 机器人 → 消息接收地址；</li>
-                  <li>发布应用版本，将机器人加入群聊，@机器人即可对话。回调地址需公网可达（本地环境需内网穿透）。</li>
+                  <li>在卡片上点击「启用」，发布应用版本并将机器人加入群聊，@机器人即可对话。回调地址需公网可达（本地环境需内网穿透）。</li>
                 </ol>
               </div>
               <div class="form-group">

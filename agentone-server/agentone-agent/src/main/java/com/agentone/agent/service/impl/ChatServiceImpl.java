@@ -339,11 +339,15 @@ public class ChatServiceImpl implements ChatService {
     @Override
     public PageResult<ChatSessionVO> listSessions(String agentId, Integer page, Integer size) {
         String workspaceId = RuntimeContext.getWorkspaceId();
+        String userId = RuntimeContext.getUserId();
         Page<ChatSessionDO> p = new Page<>(page, size);
+        // 只列当前用户自己的会话：IM 回调等虚拟用户（im:platform:sender）的会话
+        // 若泄漏到控制台列表，抽屉默认选中后加载消息/发送会被归属校验 4003 拒绝
         Page<ChatSessionDO> result = sessionMapper.selectPage(p,
                 new LambdaQueryWrapper<ChatSessionDO>()
                         .eq(ChatSessionDO::getAgentId, agentId)
                         .eq(ChatSessionDO::getWorkspaceId, workspaceId)
+                        .eq(ChatSessionDO::getUserId, userId)
                         .orderByDesc(ChatSessionDO::getUpdatedAt));
         Page<ChatSessionVO> voPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
         voPage.setRecords(result.getRecords().stream().map(this::toSessionVO).collect(Collectors.toList()));

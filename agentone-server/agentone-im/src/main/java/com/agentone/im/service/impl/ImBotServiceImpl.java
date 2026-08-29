@@ -85,7 +85,8 @@ public class ImBotServiceImpl implements ImBotService {
         bot.setMode(dto.getMode());
         bot.setAgentId(emptyToNull(dto.getAgentId()));
         bot.setConfigEncrypted(encryptConfig(config));
-        bot.setStatus("active");
+        // 创建即停用（测试期）：先在控制台发送测试验证凭证，确认无误后手动启用才接收真实流量
+        bot.setStatus("disabled");
         bot.setCreatedBy(RuntimeContext.getUserId());
         bot.setCreatedAt(LocalDateTime.now());
         bot.setUpdatedAt(LocalDateTime.now());
@@ -131,9 +132,8 @@ public class ImBotServiceImpl implements ImBotService {
     @Override
     public void send(String id, ImSendDTO dto) {
         ImBotDO bot = loadOwnedBot(id);
-        if (!"active".equals(bot.getStatus())) {
-            throw new BusinessException(5202, "机器人已停用，无法发送");
-        }
+        // 不做启停门禁：本接口是控制台手动测试通道（测试发送恰在启用前进行）；
+        // 启停状态只管控回调入口的真实流量（见 handleIncoming）
         Map<String, String> config = decryptConfig(bot);
         if ("dingtalk".equals(bot.getPlatform()) && "webhook".equals(bot.getMode())) {
             dingTalkSender.send(config.get("webhookUrl"), config.get("secret"),

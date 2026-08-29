@@ -116,7 +116,7 @@ draft ⇄ testing ──提交发布审批──→ pending_review ──他人�
 |------|------|------|
 | POST | `/api/chat` | 同步对话 → `{sessionId, reply, tokenCount, durationMs, traceId}` |
 | POST | `/api/chat/stream` | 流式对话（SSE，见 sse-protocol.md） |
-| GET | `/api/chat/sessions?agentId=` | 会话列表 |
+| GET | `/api/chat/sessions?agentId=` | 会话列表（仅当前用户自己的会话，不含 IM 回调等虚拟用户会话） |
 | GET | `/api/chat/sessions/{sessionId}` | 会话详情 |
 | GET | `/api/chat/sessions/{sessionId}/messages` | 会话消息列表 |
 | PUT | `/api/chat/sessions/{sessionId}/rename` | 重命名（body：`{title*}`，≤100 字） |
@@ -281,10 +281,10 @@ Skill 列表为**合并视图**：内置（builtin，虚拟挂载）+ 用户 Ski
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/im/bots` | 机器人列表 → `[{id, name, platform, mode, agentId, status, createdBy, createdAt, configMasked}]` |
-| POST | `/api/im/bots` | 创建。body：`{name, platform: dingtalk\|wecom, mode: webhook\|callback, agentId?, config{}}`。config 键：钉钉 webhook = `webhookUrl`（强制 `https://oapi.dingtalk.com/` 域名，防 SSRF）+ `secret?`；钉钉 callback = `appSecret`；企微 callback = `corpId/agentId/secret/token/encodingAesKey`（创建时即校验 encodingAesKey 合法性）。企微无 webhook 形态，wecom+webhook 拒绝 |
+| POST | `/api/im/bots` | 创建。body：`{name, platform: dingtalk\|wecom, mode: webhook\|callback, agentId?, config{}}`。config 键：钉钉 webhook = `webhookUrl`（强制 `https://oapi.dingtalk.com/` 域名，防 SSRF）+ `secret?`；钉钉 callback = `appSecret`；企微 callback = `corpId/agentId/secret/token/encodingAesKey`（创建时即校验 encodingAesKey 合法性）。企微无 webhook 形态，wecom+webhook 拒绝。**创建后默认 `disabled`**，测试发送验证凭证后由 PUT 启用 |
 | PUT | `/api/im/bots/{id}` | 更新。body 全可选：`{name?, agentId?, status?: active\|disabled, config?}` |
 | DELETE | `/api/im/bots/{id}` | 删除（发送者会话映射由 FK CASCADE 清理） |
-| POST | `/api/im/bots/{id}/send` | 主动发送测试消息。body：`{text, msgType?: text\|markdown, title?}`。仅钉钉 webhook 模式支持，其余 5206 |
+| POST | `/api/im/bots/{id}/send` | 主动发送测试消息。body：`{text, msgType?: text\|markdown, title?}`。仅钉钉 webhook 模式支持，其余 5206。不受启停状态限制（测试发送在启用前进行） |
 
 ### 平台回调 `/api/im/callback`（公开端点，无 JWT，由平台签名鉴权）
 

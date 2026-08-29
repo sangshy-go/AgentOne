@@ -20,11 +20,16 @@
         </div>
       </div>
       <div class="ad-actions">
-        <button class="btn-test-chat" @click="chatDrawerVisible = true">
+        <!-- 发布前为「测试对话」、发布后为「试用对话」；停用/归档后端禁止对话（3003），无需暴露入口 -->
+        <button
+          v-if="canChat"
+          class="btn-test-chat"
+          @click="chatDrawerVisible = true"
+        >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
           </svg>
-          测试对话
+          {{ chatLabel }}
         </button>
         <button
           v-if="agent?.status === 'pending_review' && isSubmitter"
@@ -84,7 +89,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import type { Agent } from '@/types'
@@ -123,6 +128,16 @@ const tabs = [
   { key: 'memory', label: '记忆' },
   { key: 'advanced', label: '高级' },
 ]
+
+/**
+ * 对话入口可见性（与后端 ChatServiceImpl.loadAgent 放行范围一致）：
+ * - draft/testing/pending_review → 「测试对话」（发布前验证；审批中提示文案承诺可继续测试）
+ * - published → 「试用对话」（控制台是发布后最基础的消费渠道，API/IM 是附加渠道而非替代）
+ * - stopped/archived → 隐藏（后端统一 3003 拒绝对话）
+ */
+const CHATTABLE_STATUSES = ['draft', 'testing', 'pending_review', 'published']
+const canChat = computed(() => !!agent.value && CHATTABLE_STATUSES.includes(agent.value.status))
+const chatLabel = computed(() => (agent.value?.status === 'published' ? '试用对话' : '测试对话'))
 
 function statusLabel(status: string) {
   const map: Record<string, string> = {
