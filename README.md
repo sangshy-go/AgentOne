@@ -6,6 +6,8 @@
 
 **开源 AI Agent 中台 —— 像搭表单一样构建你的企业级 AI 助手**
 
+**简体中文** | [English](./README_EN.md)
+
 完全私有部署 · 数据不出域 · 源码自主可控 · 对话可留痕
 
 *On-premise AI Agent platform for regulated industries — banking, insurance, and state-owned enterprises.*
