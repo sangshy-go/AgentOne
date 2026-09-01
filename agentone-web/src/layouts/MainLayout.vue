@@ -5,11 +5,8 @@
       <!-- Logo -->
       <div class="sidebar-header">
         <a class="sidebar-logo">
-          <div class="icon-box">灵一</div>
-          <div v-if="!collapsed" class="logo-text">
-            灵一 AgentOne
-            <span class="version">v1.0</span>
-          </div>
+          <img v-if="collapsed" class="logo-icon" :src="'/agentone-luminous-icon-tight.svg'" alt="AgentOne" />
+          <img v-else class="logo-lockup" :src="'/agentone-logo-inline.svg'" alt="AgentOne 灵一" />
         </a>
       </div>
 
@@ -60,19 +57,19 @@
           <div class="user-avatar">{{ authStore.nickname?.charAt(0) || 'U' }}</div>
           <div v-if="!collapsed" class="user-info">
             <div class="user-name">{{ authStore.nickname || '用户' }}</div>
-            <div class="user-role">管理员</div>
+            <div class="user-role">{{ roleLabel }}</div>
           </div>
           <svg v-if="!collapsed" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--text-muted); flex-shrink: 0;">
             <path d="M6 9l6 6 6-6" />
           </svg>
         </div>
         <!-- User Dropdown -->
-        <div v-if="showUserMenu" class="user-dropdown">
+        <div v-if="showUserMenu && !collapsed" class="user-dropdown">
           <div class="user-dropdown-item" @click="handleMenuClick('Settings'); showUserMenu = false">个人设置</div>
           <div class="user-dropdown-item" @click="handleLogout">退出登录</div>
         </div>
         <!-- Collapse Trigger -->
-        <div class="collapse-trigger" @click="collapsed = !collapsed">
+        <div class="collapse-trigger" @click="toggleCollapse">
           <svg :style="{ transform: collapsed ? 'rotate(180deg)' : '' }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M15 18l-6-6 6-6" />
           </svg>
@@ -88,24 +85,19 @@
         <div class="header-breadcrumb">
           {{ currentRouteName }}
         </div>
-        <div class="header-right">
-          <button class="header-btn" title="暗色模式" @click="authStore.toggleDarkMode">
-            {{ authStore.isDarkMode ? '☀️' : '🌙' }}
-          </button>
-          <button class="header-btn" title="帮助">?</button>
-        </div>
       </header>
 
       <!-- Content -->
       <div class="content">
-        <router-view />
+        <!-- key 绑定 workspaceId：切换工作空间后强制重挂载当前页，触发各页 onMounted 重新加载数据 -->
+        <router-view :key="authStore.workspaceId" />
       </div>
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import { useAuthStore } from '@/stores/auth'
@@ -118,6 +110,13 @@ const message = useMessage()
 const collapsed = ref(false)
 const showWsDropdown = ref(false)
 const showUserMenu = ref(false)
+
+// 加载工作空间列表，供侧边栏切换器使用
+onMounted(() => {
+  if (authStore.workspaces.length === 0) {
+    authStore.loadWorkspaces()
+  }
+})
 
 // Navigation groups with SVG icons (from the prototype)
 const navGroups = [
@@ -144,6 +143,16 @@ const navGroups = [
         label: '知识库',
         icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>',
       },
+      {
+        key: 'Skills',
+        label: 'Skill 中心',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>',
+      },
+      {
+        key: 'Mcp',
+        label: 'MCP 集成',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 2v6M15 2v6"/><path d="M6 8h12v4a6 6 0 01-6 6 6 6 0 01-6-6V8z"/><path d="M12 18v4"/></svg>',
+      },
     ],
   },
   {
@@ -159,11 +168,26 @@ const navGroups = [
         label: 'API Key',
         icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>',
       },
+      {
+        key: 'ImBots',
+        label: 'IM 机器人',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>',
+      },
     ],
   },
   {
     label: '管理',
     items: [
+      {
+        key: 'Approvals',
+        label: '发布审批',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>',
+      },
+      {
+        key: 'Monitor',
+        label: '监控日志',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
+      },
       {
         key: 'Settings',
         label: '工作空间',
@@ -180,12 +204,26 @@ const currentRouteName = computed(() => {
     Agents: 'Agent 管理',
     AgentDetail: 'Agent 详情',
     Knowledge: '知识库',
+    Skills: 'Skill 中心',
+    Mcp: 'MCP 集成',
     Models: '模型管理',
     ApiKeys: 'API Key',
+    ImBots: 'IM 机器人',
+    Approvals: '发布审批',
+    Monitor: '监控日志',
     Settings: '工作空间',
   }
   return map[route.name as string] || '工作台'
 })
+
+const ROLE_LABELS: Record<string, string> = {
+  owner: '所有者',
+  admin: '管理员',
+  developer: '开发者',
+  observer: '观察者',
+  auditor: '审计员',
+}
+const roleLabel = computed(() => ROLE_LABELS[authStore.currentRole] || authStore.currentRole)
 
 const currentWorkspaceName = computed(() => {
   const ws = authStore.workspaces.find((w) => w.id === authStore.workspaceId)
@@ -197,9 +235,20 @@ function handleMenuClick(key: string) {
   showWsDropdown.value = false
 }
 
-function handleSwitchWorkspace(wsId: string) {
-  authStore.switchWorkspace(wsId)
+/** 收起/展开侧边栏时关闭已打开的下拉弹框，避免弹框残留或再次展开时复活 */
+function toggleCollapse() {
+  collapsed.value = !collapsed.value
+  showUserMenu.value = false
   showWsDropdown.value = false
+}
+
+async function handleSwitchWorkspace(wsId: string) {
+  showWsDropdown.value = false
+  if (wsId === authStore.workspaceId) return
+  await authStore.switchWorkspace(wsId)
+  // 切换后刷新当前页面数据（各页面 onMounted 会重新加载）
+  message.success('已切换工作空间')
+  router.replace({ path: route.path, force: true })
 }
 
 function handleLogout() {
@@ -208,6 +257,7 @@ function handleLogout() {
   message.success('已退出登录')
   router.push('/login')
 }
+
 </script>
 
 <style scoped>
@@ -251,49 +301,23 @@ function handleLogout() {
 .sidebar-logo {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   text-decoration: none;
   letter-spacing: -0.5px;
 }
 
-.icon-box {
+.logo-icon {
   width: 40px;
   height: 40px;
-  background: var(--grad-primary);
-  border-radius: var(--radius);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 14px;
-  font-weight: 800;
-  box-shadow: var(--glow-primary-md);
   flex-shrink: 0;
 }
 
-.logo-text {
-  font-size: 15px;
-  font-weight: 800;
-  background: var(--grad-text);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
+.logo-lockup {
+  height: 46px;
+  width: auto;
+  display: block;
 }
 
-.version {
-  font-size: 10px;
-  color: var(--text-muted);
-  font-weight: 600;
-  background: var(--surface);
-  padding: 2px 8px;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-  -webkit-text-fill-color: var(--text-muted);
-}
 
 /* Workspace Switcher */
 .workspace-switcher {
@@ -564,37 +588,6 @@ function handleLogout() {
   font-size: 13px;
   color: var(--text-muted);
   font-weight: 500;
-}
-
-.header-right {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.header-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: #FFFFFF;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-secondary);
-  transition: var(--transition);
-  position: relative;
-  font-size: 15px;
-}
-
-.header-btn:hover {
-  background: var(--primary);
-  color: white;
-  border-color: var(--primary);
-  box-shadow: var(--glow-primary-md);
-  transform: translateY(-2px);
 }
 
 /* Content */

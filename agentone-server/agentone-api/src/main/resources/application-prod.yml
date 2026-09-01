@@ -1,0 +1,30 @@
+# ============================================================
+# 生产环境配置（profile=prod）
+# 通过 Spring profile 机制激活：启动时加 -Dspring.profiles.active=prod
+# 或设置环境变量 SPRING_PROFILES_ACTIVE=prod。
+#
+# 该文件仅覆盖与默认（application.yml / dev）不同的项，其余配置继承 application.yml。
+# 默认 profile（不指定 active）仍只加载 application.yml，应用可正常启动。
+# ============================================================
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  # 生产环境日志收紧：应用自身与第三方均只输出 INFO 及以上，杜绝 SQL 参数泄露
+  # （application.yml 已设 com.agentone=INFO，这里显式再声明，便于运维识别）
+logging:
+  level:
+    com.agentone: INFO
+    org.springframework.ai: INFO
+
+# ------------------------------------------------------------
+# 生产部署提醒（敏感配置必须通过环境变量/密钥管理注入，禁止硬编码）：
+#   - agentone.jwt.secret          必须设置强随机密钥（JWT_SECRET）
+#   - spring.datasource.username   通过 SPRING_DATASOURCE_USERNAME 注入
+#   - spring.datasource.password   通过 SPRING_DATASOURCE_PASSWORD 注入
+#   - spring.data.redis.password   通过 SPRING_DATA_REDIS_PASSWORD 注入
+#   - ai.openai.api-key            通过 OPENAI_API_KEY 注入
+# application.yml 中这些项均已提供安全占位（空密钥 fail-closed / sk-placeholder），
+# 生产环境务必以真实值覆盖。
+# ------------------------------------------------------------

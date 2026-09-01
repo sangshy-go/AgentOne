@@ -6,9 +6,7 @@
     <header class="nav" :class="{ scrolled: navScrolled }">
       <div class="nav-inner">
         <div class="nav-brand" @click="scrollTop">
-          <div class="nav-logo">灵一</div>
-          <span class="nav-name">灵一 AgentOne</span>
-          <span class="nav-version">开源</span>
+          <img class="nav-logo" :src="'/agentone-logo-stacked.svg'" alt="AgentOne 灵一 · 企业级 Agent 中台" />
         </div>
         <nav class="nav-links">
           <span class="nav-link" @click="goAnchor('features')">核心亮点</span>
@@ -221,6 +219,35 @@
           </div>
         </div>
 
+        <!-- IM 原生接入 -->
+        <div class="b-card b-wide reveal">
+          <div class="b-wide-main">
+            <div class="b-icon blue">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M12 8V4H8" /><rect width="16" height="12" x="4" y="8" rx="2" />
+                <path d="M2 14h2" /><path d="M20 14h2" /><path d="M15 13v2" /><path d="M9 13v2" />
+              </svg>
+            </div>
+            <div class="b-wide-body">
+              <div class="b-kick">EMBEDDED</div>
+              <h3 class="b-title">钉钉原生接入</h3>
+              <p class="b-tag">不用多开一个系统，Agent 就在工作群里。</p>
+              <p class="b-desc">钉钉群通知一键直达；@机器人触发 Agent 多轮对话，群里每人独立会话。凭证加密落库、平台签名验签，IM 对话同样进会话日志、可追溯。</p>
+            </div>
+          </div>
+          <div class="b-wide-providers">
+            <div class="im-demo">
+              <div class="im-row im-in">@面试 Agent 面试一共几轮？</div>
+              <div class="im-row im-out">默认 3 轮，重点考技术知识和项目深挖。</div>
+            </div>
+            <div class="prov-cap">已接入 · 平台 / 形态</div>
+            <div class="providers">
+              <span class="provider">钉钉 · 通知推送</span>
+              <span class="provider">钉钉 · @对话</span>
+            </div>
+          </div>
+        </div>
+
         <!-- 信创友好 -->
         <div class="b-card b-wide reveal">
           <div class="b-wide-main">
@@ -312,11 +339,8 @@
     <footer class="footer">
       <div class="footer-inner">
         <div class="footer-brand">
-          <div class="nav-logo">灵一</div>
-          <div>
-            <div class="footer-name">灵一 AgentOne</div>
-            <div class="footer-slogan">让每一次 AI 决策，都经得起审视。</div>
-          </div>
+          <img class="footer-logo" :src="'/agentone-logo-inline-light.svg'" alt="AgentOne 灵一" />
+          <div class="footer-slogan">让每一次 AI 决策，都经得起审视。</div>
         </div>
         <div class="footer-links">
           <span @click="goAnchor('features')">核心亮点</span>
@@ -453,6 +477,7 @@ const compare = [
   { dim: '审计合规', dify: '弱', fastgpt: '弱', us: '全量留痕 · 可导出' },
   { dim: 'RAG 质量', dify: '不可度量', fastgpt: '较强 · 不可度量', us: '可度量 · 可回归' },
   { dim: '私有化', dify: '支持', fastgpt: '支持', us: '一键 · 信创友好' },
+  { dim: '企业 IM 接入', dify: '需自建对接', fastgpt: '部分支持', us: '钉钉 · 原生双向' },
 ]
 </script>
 
@@ -494,7 +519,7 @@ const compare = [
 .nav-inner {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 14px 32px;
+  padding: 8px 32px;
   display: flex;
   align-items: center;
   gap: 32px;
@@ -502,39 +527,13 @@ const compare = [
 .nav-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   cursor: pointer;
 }
 .nav-logo {
-  width: 38px;
-  height: 38px;
-  border-radius: var(--radius);
-  background: var(--grad-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 800;
-  box-shadow: var(--glow-primary-md);
-  flex-shrink: 0;
-}
-.nav-name {
-  font-size: 15px;
-  font-weight: 800;
-  letter-spacing: -0.4px;
-  color: var(--ink);
-  white-space: nowrap;
-}
-.nav-version {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--primary);
-  background: var(--primary-light);
-  border: 1px solid var(--primary-border);
-  border-radius: 20px;
-  padding: 2px 8px;
-  white-space: nowrap;
+  height: 56px;
+  width: auto;
+  display: block;
 }
 .nav-links {
   display: flex;
@@ -1110,6 +1109,37 @@ const compare = [
   background: linear-gradient(160deg, #F7F8FE 0%, #EDF1FF 100%);
   border: 1px solid var(--border);
 }
+.im-demo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.im-row {
+  max-width: 92%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.im-in {
+  align-self: flex-start;
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-top-left-radius: 3px;
+}
+
+.im-out {
+  align-self: flex-end;
+  background: #FFFFFF;
+  border: 1px solid var(--indigo-border);
+  color: var(--text);
+  border-top-right-radius: 3px;
+}
+
 .prov-cap {
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 10.5px;
@@ -1440,19 +1470,17 @@ const compare = [
 }
 .footer-brand {
   display: flex;
-  align-items: center;
-  gap: 14px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
 }
-.footer-name {
-  font-size: 15px;
-  font-weight: 800;
-  color: #fff;
-  letter-spacing: -0.3px;
+.footer-logo {
+  height: 40px;
+  width: auto;
 }
 .footer-slogan {
   font-size: 12.5px;
   color: #64748B;
-  margin-top: 2px;
 }
 .footer-links {
   display: flex;
@@ -1506,7 +1534,8 @@ const compare = [
 }
 @media (max-width: 640px) {
   .nav-links { display: none; }
-  .nav-inner { padding: 12px 20px; gap: 16px; }
+  .nav-inner { padding: 8px 20px; gap: 16px; }
+  .nav-logo { height: 40px; }
   .hero { padding: 120px 20px 40px; }
   .hero-title { font-size: 32px; }
   .hero-ctas { flex-direction: column; }

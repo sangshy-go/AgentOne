@@ -1,5 +1,6 @@
 package com.agentone.workspace.service.impl;
 
+import com.agentone.common.exception.BusinessException;
 import com.agentone.common.service.WorkspaceService;
 import com.agentone.workspace.entity.UserWorkspaceDO;
 import com.agentone.workspace.entity.WorkspaceDO;
@@ -59,12 +60,27 @@ public class WorkspaceServiceImpl implements WorkspaceService {
 
     @Override
     public boolean checkPermission(String userId, String workspaceId) {
+        // 1. 检查用户与工作空间的关联关系
         Long count = userWorkspaceMapper.selectCount(
                 new LambdaQueryWrapper<UserWorkspaceDO>()
                         .eq(UserWorkspaceDO::getUserId, userId)
                         .eq(UserWorkspaceDO::getWorkspaceId, workspaceId)
         );
-        return count > 0;
+        if (count == 0) return false;
+
+        // 2. 检查工作空间是否已被软删除（@TableLogic 自动过滤 deletedAt IS NOT NULL）
+        WorkspaceDO ws = workspaceMapper.selectById(workspaceId);
+        return ws != null;
+    }
+
+    @Override
+    public String getUserRole(String userId, String workspaceId) {
+        UserWorkspaceDO uw = userWorkspaceMapper.selectOne(
+                new LambdaQueryWrapper<UserWorkspaceDO>()
+                        .eq(UserWorkspaceDO::getUserId, userId)
+                        .eq(UserWorkspaceDO::getWorkspaceId, workspaceId)
+        );
+        return uw != null ? uw.getRole() : null;
     }
 
     @Override
@@ -80,5 +96,26 @@ public class WorkspaceServiceImpl implements WorkspaceService {
     public String getDefaultWorkspaceId(String userId) {
         List<String> ids = getUserWorkspaceIds(userId);
         return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteWorkspace(String workspaceId) {
+        WorkspaceDO workspace = workspaceMapper.selectById(workspaceId);
+        if (workspace == null) {
+            throw new BusinessException(2001, "工作空间不存在");
+        }
+        // @TableLogic(delval="now()")：deleteById 实际执行
+        // UPDATE workspace SET deleted_at = now() WHERE id = ? AND deleted_at IS NULL。
+        // 不能手工 setDeletedAt + updateById——逻辑删除字段被排除在 updateById 的 SET 子句外，不会生效。
+        workspaceMapper.deleteById(workspaceId);
+
+        // 清理 user_workspace 关联，避免工作空间删除后关联行残留，
+        // 导致用户默认工作空间（由关联顺序派生）悬空、指向已删除的工作空间。
+        // 删除后默认工作空间会自动从剩余关联重算（无剩余则为 null，安全）。
+        userWorkspaceMapper.delete(
+                new LambdaQueryWrapper<UserWorkspaceDO>()
+                        .eq(UserWorkspaceDO::getWorkspaceId, workspaceId)
+        );
     }
 }

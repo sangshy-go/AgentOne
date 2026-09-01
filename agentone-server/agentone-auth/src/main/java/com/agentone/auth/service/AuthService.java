@@ -28,4 +28,9 @@ public interface AuthService {
      * C2: 用 refresh token 重新签发 access token（及滚动 refresh token）
      */
     AuthVO refreshToken(String userId, String workspaceId, String email);
+
+    /**
+     * P2: 会话恢复时的轻量二次校验（账号状态 + workspace 归属）
+     */
+    void checkSession(String userId, String workspaceId);
 }

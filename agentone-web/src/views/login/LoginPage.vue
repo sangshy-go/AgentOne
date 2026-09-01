@@ -2,9 +2,7 @@
   <div class="login-container">
     <div class="login-card">
       <!-- Animated Logo -->
-      <div class="login-logo">灵一</div>
-      <h1 class="login-title">AgentOne</h1>
-      <p class="login-subtitle">企业级 AI Agent 中台 · 灵一</p>
+      <img class="login-logo" :src="'/agentone-logo-stacked.svg'" alt="AgentOne 灵一 · 企业级 Agent 中台" />
 
       <n-form ref="formRef" :model="form" :rules="rules" style="margin-top: 28px;">
         <n-form-item label="邮箱" path="email">
@@ -126,39 +124,11 @@ async function handleLogin() {
 }
 
 .login-logo {
-  width: 68px;
-  height: 68px;
-  border-radius: var(--radius-lg);
-  background: var(--grad-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 24px;
-  font-weight: 800;
+  display: block;
+  height: 76px;
+  width: auto;
   margin: 0 auto 22px;
-  box-shadow: var(--glow-primary-md);
   animation: float 3s ease-in-out infinite;
-}
-
-.login-title {
-  text-align: center;
-  font-size: 26px;
-  font-weight: 800;
-  margin-bottom: 6px;
-  letter-spacing: -0.8px;
-  background: var(--grad-text);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.login-subtitle {
-  text-align: center;
-  font-size: 13px;
-  color: var(--text-muted);
-  margin-bottom: 8px;
-  font-weight: 500;
 }
 
 .login-footer {

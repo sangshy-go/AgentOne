@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -28,12 +29,29 @@ public class ChunkService {
     public static final String STRATEGY_BY_TITLE = "by-title";
     public static final String STRATEGY_BY_PARAGRAPH = "by-paragraph";
 
+    /** 默认分块策略（与 DB knowledge_base.chunk_strategy 默认值一致） */
+    public static final String DEFAULT_STRATEGY = STRATEGY_BY_LENGTH;
+    /**
+     * 默认 chunkSize / overlap：唯一事实来源。
+     *
+     * 必须与 DB 默认值保持一致（V11__add_chunk_config_to_knowledge_base.sql：
+     * chunk_size DEFAULT 400、chunk_overlap DEFAULT 60）。此前代码兜底写死 512/50，
+     * 与 DB 默认 400/60 分叉：走 DB 默认的知识库按 400/60 切分，而字段为 NULL 的
+     * 老数据走代码兜底按 512/50 切分，同一份文档在不同路径下分块结果不一致。
+     * 新增/修改默认值时，两处必须同步。
+     */
+    public static final int DEFAULT_CHUNK_SIZE = 400;
+    public static final int DEFAULT_CHUNK_OVERLAP = 60;
+
     /** TokenTextSplitter 内部参数：小于此字符数的 chunk 会被合并到相邻 chunk */
     private static final int MIN_CHUNK_SIZE_CHARS = 100;
     /** 小于此长度的文本不会生成 embedding */
     private static final int MIN_CHUNK_LENGTH_TO_EMBED = 10;
     /** 单文档最大 chunk 数（防止异常大文档） */
     private static final int MAX_NUM_CHUNKS = 10000;
+
+    /** 文本中任意行首是否存在 Markdown 标题（行级匹配，故用 MULTILINE 而非 DOTALL） */
+    private static final Pattern HEADING_ANYWHERE = Pattern.compile("^#{1,4}\\s+", Pattern.MULTILINE);
 
     /**
      * 按策略分块（入口方法）
@@ -49,7 +67,7 @@ public class ChunkService {
         }
         validateParams(chunkSize, overlap);
 
-        String s = (strategy != null) ? strategy : STRATEGY_BY_LENGTH;
+        String s = (strategy != null) ? strategy : DEFAULT_STRATEGY;
         List<String> chunks = switch (s) {
             case STRATEGY_BY_TITLE -> splitByTitle(text, chunkSize);
             case STRATEGY_BY_PARAGRAPH -> splitByParagraph(text, chunkSize);
@@ -121,7 +139,12 @@ public class ChunkService {
         }
 
         // 若整个文本都没有标题，回退到 by-length
-        if (sections.size() <= 1 && !text.matches("(?s).*^#{1,4}\\s+.*")) {
+        //
+        // 原实现用 text.matches("(?s).*^#{1,4}\\s+.*")：DOTALL 只让 `.` 跨行，`^` 仍只锚定
+        // 输入起始位置，因此"文中间存在标题"的文本会被判定为无标题而错误回退到 by-length。
+        // 行级匹配需要的是 MULTILINE（让 `^` 锚定每行行首）+ find（子串查找），
+        // 故改用预编译 Pattern.MULTILINE + find()。
+        if (sections.size() <= 1 && !HEADING_ANYWHERE.matcher(text).find()) {
             return splitByToken(text, chunkSize);
         }
 

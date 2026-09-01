@@ -80,12 +80,14 @@ public class DocumentProcessor {
      */
     public void processRawContent(DocumentDO doc, KnowledgeBaseDO kb, String rawText) {
         String knowledgeId = kb.getId();
-        String strategy = kb.getChunkStrategy() != null ? kb.getChunkStrategy() : "by-length";
-        int chunkSize = kb.getChunkSize() != null ? kb.getChunkSize() : 512;
-        int overlap = kb.getChunkOverlap() != null ? kb.getChunkOverlap() : 50;
+        // 兜底默认值统一取 ChunkService 常量（与 DB 默认 400/60 一致），避免代码与 SQL 默认值分叉
+        String strategy = kb.getChunkStrategy() != null ? kb.getChunkStrategy() : ChunkService.DEFAULT_STRATEGY;
+        int chunkSize = kb.getChunkSize() != null ? kb.getChunkSize() : ChunkService.DEFAULT_CHUNK_SIZE;
+        int overlap = kb.getChunkOverlap() != null ? kb.getChunkOverlap() : ChunkService.DEFAULT_CHUNK_OVERLAP;
 
         List<String> rawChunks = chunkService.splitByStrategy(rawText, strategy, chunkSize, overlap);
-        List<String> chunks = "by-title".equals(strategy) ? rawChunks : injectHeadingContext(rawChunks);
+        List<String> chunks = ChunkService.STRATEGY_BY_TITLE.equals(strategy)
+                ? rawChunks : injectHeadingContext(rawChunks);
 
         // 分块入库
         for (int i = 0; i < chunks.size(); i++) {
@@ -107,7 +109,9 @@ public class DocumentProcessor {
                             .eq(DocumentChunkDO::getDocumentId, doc.getId())
                             .orderByAsc(DocumentChunkDO::getChunkIndex)
             );
-            int batchSize = 20;
+            // 批大小取 10（最低公共上限）：DashScope text-embedding-v3/v4 单次请求最多 10 条文本，
+            // 超过会报 "batch size is invalid, it should not be larger than 10"；OpenAI 等上限更宽，取 10 全兼容
+            int batchSize = 10;
             for (int i = 0; i < allChunks.size(); i += batchSize) {
                 int end = Math.min(i + batchSize, allChunks.size());
                 List<Document> batch = new ArrayList<>();
@@ -123,7 +127,23 @@ public class DocumentProcessor {
                 vectorStoreService.saveBatchWithProvider(batch, provider, embeddingModel);
             }
         } catch (Exception e) {
-            log.error("向量化失败，回滚已入库的 chunk: docId={}, error={}", doc.getId(), e.getMessage(), e);
+            log.error("向量化失败，回滚已入库的 chunk 与向量: docId={}, error={}", doc.getId(), e.getMessage(), e);
+            // 先按 chunk id 删除已写入的向量，避免向量表残留孤儿向量（仅靠删 chunk 行会漏删向量）
+            try {
+                List<DocumentChunkDO> storedChunks = chunkMapper.selectList(
+                        new LambdaQueryWrapper<DocumentChunkDO>()
+                                .eq(DocumentChunkDO::getDocumentId, doc.getId()));
+                for (DocumentChunkDO c : storedChunks) {
+                    try {
+                        vectorStoreService.deleteWithProvider(c.getId(), provider, embeddingModel);
+                    } catch (Exception ex) {
+                        log.debug("回滚删除向量失败（可忽略）: chunkId={}, error={}", c.getId(), ex.getMessage());
+                    }
+                }
+            } catch (Exception ex) {
+                log.warn("查询分块用于回滚向量失败: docId={}, error={}", doc.getId(), ex.getMessage());
+            }
+            // 再删除已入库的 chunk 行
             chunkMapper.delete(
                     new LambdaQueryWrapper<DocumentChunkDO>()
                             .eq(DocumentChunkDO::getDocumentId, doc.getId())
@@ -161,12 +181,14 @@ public class DocumentProcessor {
      * 未配置或模型不存在时直接抛异常，不做兜底。
      */
     public ModelDO resolveEmbeddingModel(String embeddingModelId) {
+        // 知识库的 Embedding 模型创建后不可变，也没有事后配置入口，
+        // 因此错误文案直接给出唯一可行路径：删除并重建知识库，避免用户找不到"配置"入口困惑
         if (embeddingModelId == null || embeddingModelId.isBlank()) {
-            throw new BusinessException(6008, "知识库未配置 Embedding 模型，请在知识库设置中绑定 Embedding 模型");
+            throw new BusinessException(6008, "知识库未绑定 Embedding 模型（历史数据），请删除该知识库并重新创建");
         }
         ModelDO model = modelMapper.selectById(embeddingModelId);
         if (model == null) {
-            throw new BusinessException(6008, "知识库绑定的 Embedding 模型不存在（可能已被删除），请重新配置");
+            throw new BusinessException(6008, "知识库绑定的 Embedding 模型已被删除，无法恢复，请删除该知识库并重新创建");
         }
         return model;
     }
@@ -221,11 +243,15 @@ public class DocumentProcessor {
                     : chunk.trim();
 
             // 检测 Markdown 标题（# / ## / ### / ####）
-            if (firstLine.matches("^#{1,4}\\s+.+")) {
+            boolean isHeadingChunk = firstLine.matches("^#{1,4}\\s+.+");
+            if (isHeadingChunk) {
                 currentHeading = firstLine.replaceFirst("^#+\\s*", "");
             }
 
-            if (!currentHeading.isEmpty() && !chunk.startsWith(currentHeading)) {
+            // 首个标题 chunk 本身已包含该标题（形如 "## 标题\n正文"），再前缀会得到重复的
+            // "[标题] ## 标题..."。故当本 chunk 就是定义该标题的 chunk，或其正文已以标题文本开头时，
+            // 跳过前缀，仅为不含标题的后续 chunk 注入上下文。
+            if (!currentHeading.isEmpty() && !isHeadingChunk && !chunk.startsWith(currentHeading)) {
                 result.add("[" + currentHeading + "] " + chunk);
             } else {
                 result.add(chunk);

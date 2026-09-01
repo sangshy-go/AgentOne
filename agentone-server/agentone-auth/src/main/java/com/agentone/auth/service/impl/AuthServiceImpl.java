@@ -13,11 +13,15 @@ import com.agentone.common.exception.BusinessException;
 import com.agentone.common.result.ResultCode;
 import com.agentone.common.service.WorkspaceService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
@@ -65,7 +69,12 @@ public class AuthServiceImpl implements AuthService {
         user.setLoginFailCount(0);
         user.setCreatedAt(LocalDateTime.now());
         user.setUpdatedAt(LocalDateTime.now());
-        userMapper.insert(user);
+        // 2. 创建用户（并发注册竞态：唯一索引兜底，捕获 DuplicateKeyException 转业务异常）
+        try {
+            userMapper.insert(user);
+        } catch (DuplicateKeyException e) {
+            throw new BusinessException(ResultCode.EMAIL_ALREADY_EXISTS);
+        }
 
         // 3. 创建默认工作空间
         String workspaceId = workspaceService.createDefaultWorkspace(user.getId(), user.getEmail());
@@ -89,11 +98,19 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public AuthVO login(LoginDTO dto) {
-        String failKey = LOGIN_FAIL_KEY + dto.getEmail();
+        // Q6: 锁定 key 绑定客户端 IP，避免攻击者用已知邮箱从单一 IP 刷接口即可锁定受害者账户
+        String failKey = LOGIN_FAIL_KEY + getClientIp() + ":" + dto.getEmail();
 
         // 1. 检查是否被锁定
         String failCountStr = redisTemplate.opsForValue().get(failKey);
-        int failCount = failCountStr != null ? Integer.parseInt(failCountStr) : 0;
+        int failCount = 0;
+        if (failCountStr != null) {
+            try {
+                failCount = Integer.parseInt(failCountStr);
+            } catch (NumberFormatException e) {
+                failCount = 0;
+            }
+        }
         if (failCount >= maxLoginFail) {
             throw new BusinessException(ResultCode.ACCOUNT_LOCKED);
         }
@@ -115,7 +132,8 @@ public class AuthServiceImpl implements AuthService {
 
         // 4. 检查账号状态（DB 持久化锁定 + lockedUntil 时间窗口）
         if ("locked".equals(user.getStatus())) {
-            if (user.getLockedUntil() != null && user.getLockedUntil().isAfter(LocalDateTime.now())) {
+            // lockedUntil 为 null 也视为仍锁定（不自动解锁），避免 DB 脏数据导致绕过
+            if (user.getLockedUntil() == null || user.getLockedUntil().isAfter(LocalDateTime.now())) {
                 throw new BusinessException(ResultCode.ACCOUNT_LOCKED);
             }
             // lockedUntil 已过期，解锁
@@ -185,6 +203,10 @@ public class AuthServiceImpl implements AuthService {
         if (user == null || !"active".equals(user.getStatus())) {
             throw new BusinessException(ResultCode.USER_NOT_FOUND);
         }
+        // P1: 刷新时重新校验 workspace 归属；若用户已被移出该工作空间则拒绝刷新
+        if (!workspaceService.checkPermission(userId, workspaceId)) {
+            throw new BusinessException(ResultCode.WORKSPACE_NO_PERMISSION);
+        }
         // 重新签发 access + 滚动 refresh token
         String access = jwtUtil.generateToken(userId, workspaceId, email);
         String refresh = jwtUtil.generateRefreshToken(userId, workspaceId, email);
@@ -199,8 +221,22 @@ public class AuthServiceImpl implements AuthService {
         return vo;
     }
 
-    private void incrementFailCount(String failKey, String userId) {
-        Long count = redisTemplate.opsForValue().increment(failKey);
+    /**
+     * P2: 会话恢复（管理端点 /api/auth/me）时的轻量二次校验：
+     * 重新核对账号状态（禁用）与 workspace 归属，避免 24h access token 期间账号被禁用仍可用。
+     */
+    @Override
+    public void checkSession(String userId, String workspaceId) {
+        SysUserDO user = userMapper.selectById(userId);
+        if (user == null || !"active".equals(user.getStatus())) {
+            throw new BusinessException(ResultCode.USER_NOT_FOUND);
+        }
+        if (!workspaceService.checkPermission(userId, workspaceId)) {
+            throw new BusinessException(ResultCode.WORKSPACE_NO_PERMISSION);
+        }
+    }
+
+    private void incrementFailCount(String failKey, String userId) {        Long count = redisTemplate.opsForValue().increment(failKey);
         if (count != null && count == 1) {
             redisTemplate.expire(failKey, lockMinutes, TimeUnit.MINUTES);
         }
@@ -215,5 +251,27 @@ public class AuthServiceImpl implements AuthService {
                 userMapper.updateById(user);
             }
         }
+    }
+
+    /**
+     * Q6: 提取客户端真实 IP（支持反向代理 X-Forwarded-For），用于登录失败锁定 key 的 IP 维度隔离。
+     */
+    private String getClientIp() {
+        try {
+            ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+            if (attrs != null) {
+                HttpServletRequest request = attrs.getRequest();
+                String forwarded = request.getHeader("X-Forwarded-For");
+                if (forwarded != null && !forwarded.isBlank()) {
+                    return forwarded.split(",")[0].trim();
+                }
+                if (request.getRemoteAddr() != null) {
+                    return request.getRemoteAddr();
+                }
+            }
+        } catch (Exception e) {
+            log.debug("获取客户端 IP 失败: {}", e.getMessage());
+        }
+        return "unknown";
     }
 }

@@ -1,6 +1,7 @@
 package com.agentone.auth.filter;
 
 import com.agentone.auth.util.JwtUtil;
+import com.agentone.auth.util.TokenBlacklist;
 import com.agentone.common.context.Context;
 import com.agentone.common.context.RuntimeContext;
 import com.auth0.jwt.interfaces.DecodedJWT;
@@ -11,6 +12,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -20,13 +22,16 @@ import java.util.Map;
 /**
  * JWT 认证过滤器
  * 从 Authorization Header 解析 JWT，注入 RuntimeContext
+ * @Order(1)：必须先于 WorkspaceRbacFilter（@Order(2)，依赖本过滤器注入的 Context）
  */
 @Slf4j
 @Component
+@Order(1)
 @RequiredArgsConstructor
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
+    private final TokenBlacklist tokenBlacklist;
     private final ObjectMapper objectMapper;
 
     /**
@@ -39,6 +44,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             "/api/auth/logout",
             "/actuator/health",
             "/v1/",
+            "/api/im/callback/",  // IM 平台回调：无 JWT，由平台签名机制鉴权（见 ImCallbackController）
             "/error"
     };
 
@@ -64,6 +70,20 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         }
         try {
             DecodedJWT jwt = jwtUtil.parseToken(token);
+
+            // 安全防护：拒绝 refresh token 用于普通 API 认证
+            // refresh token 有效期 7 天，若可当 access token 用则等于变相绕过 24h 过期限制
+            if (jwtUtil.isRefreshToken(jwt)) {
+                writeUnauthorized(response, "Refresh token cannot be used for API authentication");
+                return;
+            }
+
+            // 服务端失效：被注销/滚动失效的 jti 一律拒绝（登出或 refresh 轮换后旧 token 立即失效）
+            if (tokenBlacklist.isBlacklisted(jwtUtil.getJti(jwt))) {
+                writeUnauthorized(response, "Token has been revoked");
+                return;
+            }
+
             String userId = jwtUtil.getUserId(jwt);
             String workspaceId = jwtUtil.getWorkspaceId(jwt);
             String email = jwtUtil.getEmail(jwt);
@@ -90,7 +110,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
      */
     private String extractToken(HttpServletRequest request) {
         String authHeader = request.getHeader("Authorization");
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+        // RFC 7235：scheme 大小写不敏感，兼容客户端小写 "bearer "
+        if (authHeader != null && authHeader.length() > 7
+                && authHeader.regionMatches(true, 0, "Bearer ", 0, 7)) {
             return authHeader.substring(7);
         }
         jakarta.servlet.http.Cookie[] cookies = request.getCookies();

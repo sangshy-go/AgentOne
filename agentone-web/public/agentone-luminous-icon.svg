@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 200 200" role="img" aria-labelledby="title desc">
+  <title id="title">AgentOne luminous icon</title>
+  <desc id="desc">Minimal Agent icon with a lively violet-indigo-cyan glow.</desc>
+  <defs>
+    <linearGradient id="shellGlow" x1="48" y1="36" x2="178" y2="168" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9A78FF"/>
+      <stop offset="0.52" stop-color="#706CF6"/>
+      <stop offset="1" stop-color="#55C8F3"/>
+    </linearGradient>
+  </defs>
+  <rect x="10" y="82" width="27" height="42" rx="13.5" fill="#49D9E3"/>
+  <rect x="163" y="82" width="27" height="42" rx="13.5" fill="#49D9E3"/>
+  <path d="M65 30H135C162 30 180 50 180 77V127C180 157 157 177 128 177H72C43 177 20 157 20 127V77C20 50 38 30 65 30Z" fill="url(#shellGlow)"/>
+  <path d="M57 57C67 45 82 40 98 40" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" opacity="0.48"/>
+  <circle cx="109" cy="40" r="3.5" fill="#FFFFFF" opacity="0.52"/>
+  <rect x="43" y="65" width="114" height="79" rx="39.5" fill="#FBFAFF"/>
+  <ellipse cx="79" cy="104" rx="8" ry="9" fill="#5752B6"/>
+  <ellipse cx="121" cy="104" rx="8" ry="9" fill="#5752B6"/>
+</svg>

@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.Date;
+import java.util.UUID;
 
 /**
  * JWT 工具类
@@ -74,6 +75,8 @@ public class JwtUtil {
                 .withClaim("user_id", userId)
                 .withClaim("workspace_id", workspaceId)
                 .withClaim("email", email)
+                .withClaim("type", "access")
+                .withClaim("jti", UUID.randomUUID().toString())
                 .withIssuedAt(now)
                 .withExpiresAt(expireAt)
                 .sign(Algorithm.HMAC256(secret));
@@ -92,6 +95,7 @@ public class JwtUtil {
                 .withClaim("workspace_id", workspaceId)
                 .withClaim("email", email)
                 .withClaim("type", "refresh")
+                .withClaim("jti", UUID.randomUUID().toString())
                 .withIssuedAt(now)
                 .withExpiresAt(expireAt)
                 .sign(Algorithm.HMAC256(secret));
@@ -126,5 +130,13 @@ public class JwtUtil {
 
     public String getEmail(DecodedJWT jwt) {
         return jwt.getClaim("email").asString();
+    }
+
+    public String getJti(DecodedJWT jwt) {
+        return jwt.getClaim("jti").asString();
+    }
+
+    public Date getExpiresAt(DecodedJWT jwt) {
+        return jwt.getExpiresAt();
     }
 }

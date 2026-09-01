@@ -6,7 +6,10 @@ package com.agentone.agent.enums;
 public enum AgentAction {
 
     START_TEST("开始测试"),
-    PUBLISH("发布"),
+    SUBMIT_REVIEW("提交发布审批"),
+    APPROVE("审批通过"),
+    REJECT("驳回"),
+    WITHDRAW("撤回申请"),
     STOP("停用"),
     REVERT_TO_DRAFT("退回草稿"),
     ARCHIVE("归档");

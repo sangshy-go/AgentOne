@@ -4,6 +4,7 @@ import com.agentone.auth.dto.LoginDTO;
 import com.agentone.auth.dto.RegisterDTO;
 import com.agentone.auth.service.AuthService;
 import com.agentone.auth.util.JwtUtil;
+import com.agentone.auth.util.TokenBlacklist;
 import com.agentone.auth.vo.AuthVO;
 import com.agentone.common.context.RuntimeContext;
 import com.agentone.common.result.Result;
@@ -28,6 +29,7 @@ public class AuthController {
     private final AuthService authService;
     private final WorkspaceService workspaceService;
     private final JwtUtil jwtUtil;
+    private final TokenBlacklist tokenBlacklist;
 
     @Value("${agentone.jwt.expire-hours:24}")
     private long expireHours;
@@ -86,6 +88,8 @@ public class AuthController {
     public Result<AuthVO> me() {
         String userId = RuntimeContext.getUserId();
         String workspaceId = RuntimeContext.getWorkspaceId();
+        // P2: 二次校验账号状态与 workspace 归属（access token 24h 内账号被禁用/移出仍可被发现）
+        authService.checkSession(userId, workspaceId);
         AuthVO vo = new AuthVO();
         vo.setUserId(userId);
         vo.setWorkspaceId(workspaceId);
@@ -100,6 +104,9 @@ public class AuthController {
      */
     @PostMapping("/logout")
     public Result<Void> logout(HttpServletRequest request, HttpServletResponse response) {
+        // 服务端失效：将当前 access / refresh 的 jti 加入黑名单，登出后旧 token 立即作废
+        blacklistToken(extractCookie(request, "agentone_token"));
+        blacklistToken(extractCookie(request, "agentone_refresh"));
         clearAuthCookie(request, response, "agentone_token");
         clearAuthCookie(request, response, "agentone_refresh");
         return Result.ok();
@@ -123,6 +130,8 @@ public class AuthController {
                     jwtUtil.getUserId(jwt),
                     jwtUtil.getWorkspaceId(jwt),
                     jwtUtil.getEmail(jwt));
+            // 滚动失效：旧 refresh token 的 jti 立即加入黑名单，防止重放
+            blacklistToken(refreshToken);
             setAuthCookie(request, response, vo.getToken());
             setRefreshCookie(request, response, vo.getRefreshToken());
             vo.setToken(null);
@@ -181,5 +190,18 @@ public class AuthController {
             }
         }
         return null;
+    }
+
+    /** 将给定 token 的 jti 加入黑名单（解析失败时静默跳过） */
+    private void blacklistToken(String token) {
+        if (token == null || token.isBlank()) {
+            return;
+        }
+        try {
+            DecodedJWT jwt = jwtUtil.parseToken(token);
+            tokenBlacklist.blacklist(jwtUtil.getJti(jwt), jwtUtil.getExpiresAt(jwt));
+        } catch (Exception ignored) {
+            // 解析失败（过期/伪造）无需加入黑名单
+        }
     }
 }

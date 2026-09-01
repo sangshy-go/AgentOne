@@ -13,15 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 /**
  * ChunkService 分块逻辑单测（Q7：知识库模块回归保障）。
  *
- * 运行前提：agentone-knowledge/pom.xml 需引入 junit-jupiter 测试依赖，例如：
- *   <dependency>
- *     <groupId>org.junit.jupiter</groupId>
- *     <artifactId>junit-jupiter</artifactId>
- *     <version>5.10.2</version>
- *     <scope>test</scope>
- *   </dependency>
- * 然后执行：mvn -pl agentone-knowledge test
- *
+ * 运行：mvn -pl agentone-knowledge test（依赖 spring-boot-starter-test，已在 pom 声明）。
  * 注：splitByToken 委托 Spring AI 的 TokenTextSplitter，为离线纯文本切分器，无需网络/API Key。
  */
 class ChunkServiceTest {
@@ -92,7 +84,15 @@ class ChunkServiceTest {
 
     @Test
     void singleChunk_noOverlapApplied() {
-        List<String> chunks = chunkService.splitByStrategy("短文本", ChunkService.STRATEGY_BY_LENGTH, 1000, 20);
-        assertEquals(1, chunks.size());
+        // 注意：文本必须 >= 10 字符（MIN_CHUNK_LENGTH_TO_EMBED），否则不会产出分块
+        List<String> chunks = chunkService.splitByStrategy(
+                "这是一段用于测试单分块场景的完整文本内容。", ChunkService.STRATEGY_BY_LENGTH, 1000, 20);
+        assertEquals(1, chunks.size(), "单分块场景不应触发 overlap 处理");
+    }
+
+    @Test
+    void textShorterThanEmbedThreshold_returnsEmpty() {
+        // 设计约束：小于 10 字符的文本不生成 embedding，因此无分块产出
+        assertTrue(chunkService.splitByStrategy("太短", ChunkService.STRATEGY_BY_LENGTH, 1000, 0).isEmpty());
     }
 }

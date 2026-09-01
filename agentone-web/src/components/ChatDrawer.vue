@@ -17,7 +17,7 @@
               </svg>
             </div>
             <div>
-              <div class="drawer-title-text">对话测试</div>
+              <div class="drawer-title-text">{{ agent?.status === 'published' ? '试用' : '对话测试' }}</div>
               <div class="drawer-title-sub">{{ agent?.name || '' }}</div>
             </div>
           </div>
@@ -96,7 +96,37 @@
                   <div class="message-body">
                     <div class="message-role">{{ msg.role === 'user' ? '你' : agent?.name || '助手' }}</div>
                     <div class="message-bubble">
-                      <template v-if="msg.role === 'user'">{{ msg.content }}</template>
+                      <template v-if="msg.role === 'user'">
+                        <div v-if="msg.content" class="user-text">{{ msg.content }}</div>
+                        <div v-if="getAttachments(msg).length > 0" class="message-attachments">
+                          <template v-for="att in getAttachments(msg)" :key="att.id">
+                            <a
+                              v-if="att.kind === 'image'"
+                              :href="attachmentUrl(att.id)"
+                              target="_blank"
+                              rel="noopener"
+                              class="attachment-image-link"
+                            >
+                              <img :src="attachmentUrl(att.id)" class="attachment-image" :alt="att.fileName" />
+                            </a>
+                            <a
+                              v-else
+                              :href="attachmentUrl(att.id)"
+                              target="_blank"
+                              rel="noopener"
+                              class="attachment-doc-chip"
+                              :title="att.fileName"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                                <polyline points="14 2 14 8 20 8" />
+                              </svg>
+                              <span>{{ att.fileName }}</span>
+                              <span class="attachment-doc-size">{{ formatFileSize(att.fileSize) }}</span>
+                            </a>
+                          </template>
+                        </div>
+                      </template>
                       <div v-else class="md-body" v-html="renderMarkdown(msg.content)" />
                     </div>
                     <!-- Skill calls visualization -->
@@ -166,7 +196,51 @@
 
             <!-- Input Area -->
             <div class="input-area">
+              <!-- Pending attachment chips -->
+              <div v-if="pendingAttachments.length > 0" class="attachment-chips">
+                <div
+                  v-for="att in pendingAttachments"
+                  :key="att.id"
+                  class="attachment-chip"
+                  :class="{ error: att.status === 'error' }"
+                >
+                  <img
+                    v-if="att.kind === 'image' && att.previewUrl"
+                    :src="att.previewUrl"
+                    class="attachment-thumb"
+                    alt=""
+                  />
+                  <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                  </svg>
+                  <span class="attachment-chip-name" :title="att.fileName">{{ att.fileName }}</span>
+                  <button class="attachment-chip-remove" @click="removePendingAttachment(att.id)" title="移除">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
               <div class="input-wrapper">
+                <input
+                  ref="fileInputRef"
+                  type="file"
+                  multiple
+                  hidden
+                  accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.docx,.txt,.md,.csv"
+                  @change="handleFilePick"
+                />
+                <button
+                  class="attach-btn"
+                  :disabled="streaming"
+                  title="上传附件（图片/文档）"
+                  @click="triggerFilePick"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+                  </svg>
+                </button>
                 <textarea
                   ref="inputRef"
                   v-model="inputMessage"
@@ -193,6 +267,9 @@
                 <span v-if="streaming" class="streaming-indicator">
                   <span class="streaming-dot" /> {{ textStarted ? '正在生成...' : (streamingThinking ? '正在思考...' : '正在响应...') }}
                 </span>
+                <span v-else-if="pendingAttachments.some(a => a.kind === 'image')">
+                  图片识别需 Agent 绑定视觉模型（如 qwen-vl 系列）
+                </span>
                 <span v-else>{{ currentSessionId ? '继续对话' : '新建对话' }}</span>
               </div>
             </div>
@@ -208,9 +285,19 @@ import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useMessage, NPagination } from 'naive-ui'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import type { Agent, ChatSession, ChatMessage } from '@/types'
-import { chatStream, listSessions, getSessionMessages } from '@/services/chat'
+import type { Agent, ChatSession, ChatMessage, ChatMessageAttachment } from '@/types'
+import { chatStream, listSessions, getSessionMessages, uploadAttachment, attachmentUrl, parseAttachments } from '@/services/chat'
 import { useAuthStore } from '@/stores/auth'
+
+interface PendingAttachment {
+  id: string
+  kind: 'image' | 'document'
+  fileName: string
+  fileSize: number
+  mimeType: string
+  status: 'uploading' | 'ready' | 'error'
+  previewUrl?: string
+}
 
 const props = defineProps<{
   visible: boolean
@@ -230,6 +317,8 @@ const sessionTotal = ref(0)
 const messages = ref<ChatMessage[]>([])
 const currentSessionId = ref<string | null>(null)
 const inputMessage = ref('')
+const pendingAttachments = ref<PendingAttachment[]>([])
+const fileInputRef = ref<HTMLInputElement | null>(null)
 const streaming = ref(false)
 const streamingContent = ref('')
 const streamingThinking = ref('')
@@ -261,7 +350,12 @@ watch(
 const messagesRef = ref<HTMLElement | null>(null)
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 
-const canSend = computed(() => inputMessage.value.trim().length > 0 && !streaming.value)
+const canSend = computed(() => {
+  if (streaming.value) return false
+  const hasText = inputMessage.value.trim().length > 0
+  const hasReadyAttachment = pendingAttachments.value.some(a => a.status === 'ready')
+  return hasText || hasReadyAttachment
+})
 const textStarted = computed(() => streamingContent.value.length > 0)
 
 // 当 drawer 打开时，加载会话列表
@@ -272,6 +366,12 @@ watch(
       sessionPage.value = 1
       await loadSessions()
       nextTick(() => inputRef.value?.focus())
+    } else if (!v) {
+      // 关闭时清理未发送的附件和预览 URL
+      pendingAttachments.value.forEach(a => {
+        if (a.previewUrl) URL.revokeObjectURL(a.previewUrl)
+      })
+      pendingAttachments.value = []
     }
   }
 )
@@ -319,6 +419,10 @@ async function loadMessages(sessionId: string) {
 }
 
 function handleNewSession() {
+  // 正在流式时先中断在途 SSE，否则旧会话的回复会串入新会话消息列表
+  if (streaming.value) {
+    stopStreaming()
+  }
   currentSessionId.value = null
   messages.value = []
   inputMessage.value = ''
@@ -326,6 +430,10 @@ function handleNewSession() {
 }
 
 function handleSelectSession(sessionId: string) {
+  // 正在流式且切换到不同会话时，先中断在途 SSE，避免旧会话内容污染新会话
+  if (streaming.value && sessionId !== currentSessionId.value) {
+    stopStreaming()
+  }
   currentSessionId.value = sessionId
 }
 
@@ -345,6 +453,14 @@ async function handleSend() {
   inputMessage.value = ''
   resetInput()
 
+  // 收集已就绪的附件（失败/上传中的跳过）
+  const readyAttachments = pendingAttachments.value.filter(a => a.status === 'ready')
+  const attachmentIds = readyAttachments.map(a => a.id)
+  const attachmentMeta: ChatMessageAttachment[] = readyAttachments.map(a => ({
+    id: a.id, kind: a.kind, fileName: a.fileName, fileSize: a.fileSize, mimeType: a.mimeType,
+  }))
+  pendingAttachments.value = []
+
   // 乐观追加用户消息
   const tempId = `temp-${Date.now()}`
   messages.value.push({
@@ -353,6 +469,7 @@ async function handleSend() {
     content: text,
     tokenCount: 0,
     skillCalls: null,
+    attachments: attachmentMeta.length > 0 ? attachmentMeta : null,
     durationMs: null,
     traceId: null,
     createdAt: new Date().toISOString(),
@@ -374,7 +491,6 @@ async function handleSend() {
     currentSessionId.value || undefined,
     // onDelta
     (chunk) => {
-      // 正文开始输出时，自动折叠思考过程
       if (!streamingContent.value && streamingThinking.value) {
         thinkingOpen.value = false
         thinkingMs.value = Date.now() - thinkingStart.value
@@ -389,7 +505,6 @@ async function handleSend() {
     },
     // onDone
     async (sessionId) => {
-      // 保存完整回复到消息列表
       messages.value.push({
         id: `msg-${Date.now()}`,
         role: 'assistant',
@@ -405,22 +520,104 @@ async function handleSend() {
       streamingThinking.value = ''
       abortController.value = null
 
-      // 更新 sessionId（如果是新会话）
       if (sessionId && sessionId !== currentSessionId.value) {
         currentSessionId.value = sessionId
       }
-      // 刷新会话列表
       await loadSessions()
     },
     // onError
-    (err) => {
+    async (err) => {
       message.error(`对话失败: ${err}`)
       streaming.value = false
       streamingContent.value = ''
       streamingThinking.value = ''
       abortController.value = null
-    }
+      // 失败轮次也落库（user + 错误占位），刷新列表让自动标题/计数即时可见
+      await loadSessions()
+    },
+    attachmentIds
   )
+}
+
+function triggerFilePick() {
+  fileInputRef.value?.click()
+}
+
+async function handleFilePick(e: Event) {
+  const input = e.target as HTMLInputElement
+  const files = Array.from(input.files || [])
+  input.value = ''
+  for (const file of files) {
+    await enqueueUpload(file)
+  }
+}
+
+async function enqueueUpload(file: File) {
+  // 预校验文件大小（与后端一致）
+  const ext = file.name.split('.').pop()?.toLowerCase() || ''
+  const isImage = ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)
+  const limit = isImage ? 10 * 1024 * 1024 : 20 * 1024 * 1024
+  if (file.size > limit) {
+    message.error(`文件 ${file.name} 超过大小限制（${limit / 1024 / 1024}MB）`)
+    return
+  }
+
+  const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+  const previewUrl = isImage ? URL.createObjectURL(file) : undefined
+  const pending: PendingAttachment = {
+    id: tempId,
+    kind: isImage ? 'image' : 'document',
+    fileName: file.name,
+    fileSize: file.size,
+    mimeType: file.type || (isImage ? 'image/png' : 'application/octet-stream'),
+    status: 'uploading',
+    previewUrl,
+  }
+  pendingAttachments.value.push(pending)
+
+  try {
+    const res = await uploadAttachment(file)
+    const vo = res.data.data
+    // 用服务端返回的 id 替换临时 id
+    const idx = pendingAttachments.value.findIndex(a => a.id === tempId)
+    if (idx >= 0) {
+      pendingAttachments.value[idx] = {
+        ...pendingAttachments.value[idx],
+        id: vo.id,
+        status: 'ready',
+        fileName: vo.fileName,
+        fileSize: vo.fileSize,
+        mimeType: vo.mimeType,
+        kind: vo.kind,
+      }
+    }
+  } catch (err: unknown) {
+    const idx = pendingAttachments.value.findIndex(a => a.id === tempId)
+    if (idx >= 0) {
+      pendingAttachments.value[idx].status = 'error'
+    }
+    const errMsg = err instanceof Error ? err.message : '上传失败'
+    message.error(`${file.name} 上传失败：${errMsg}`)
+  }
+}
+
+function removePendingAttachment(id: string) {
+  const att = pendingAttachments.value.find(a => a.id === id)
+  if (att?.previewUrl) {
+    URL.revokeObjectURL(att.previewUrl)
+  }
+  pendingAttachments.value = pendingAttachments.value.filter(a => a.id !== id)
+}
+
+function getAttachments(msg: ChatMessage): ChatMessageAttachment[] {
+  return parseAttachments(msg.attachments)
+}
+
+function formatFileSize(bytes: number): string {
+  if (!bytes) return ''
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`
 }
 
 function handleInputKeydown(e: KeyboardEvent) {
@@ -504,6 +701,9 @@ onBeforeUnmount(() => {
   if (abortController.value) {
     abortController.value.abort()
   }
+  pendingAttachments.value.forEach(a => {
+    if (a.previewUrl) URL.revokeObjectURL(a.previewUrl)
+  })
 })
 </script>
 
@@ -849,6 +1049,57 @@ onBeforeUnmount(() => {
   box-shadow: var(--shadow-sm);
 }
 
+/* User bubble attachments */
+.user-text {
+  white-space: pre-wrap;
+}
+
+.message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.attachment-image-link {
+  display: inline-block;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  max-width: 200px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.attachment-image {
+  display: block;
+  max-width: 200px;
+  max-height: 180px;
+  object-fit: contain;
+}
+
+.attachment-doc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  color: #FFFFFF;
+  font-size: 12px;
+  text-decoration: none;
+  max-width: 220px;
+}
+
+.attachment-doc-chip:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.attachment-doc-size {
+  opacity: 0.75;
+  font-size: 11px;
+}
+
 /* Waiting dots */
 .waiting-dots {
   display: inline-flex;
@@ -1115,6 +1366,92 @@ onBeforeUnmount(() => {
   background: #FFFFFF;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
+}
+
+.attachment-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 8px;
+  background: var(--indigo-bg);
+  border: 1px solid var(--indigo-border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text);
+  max-width: 220px;
+}
+
+.attachment-chip.error {
+  background: var(--red-bg);
+  border-color: var(--red-border);
+  color: var(--red);
+}
+
+.attachment-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.attachment-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.attachment-chip-remove {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+}
+
+.attachment-chip-remove:hover {
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--primary);
+}
+
+.attach-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+
+.attach-btn:hover:not(:disabled) {
+  background: var(--indigo-bg);
+  color: var(--primary);
+  border-color: var(--indigo-border);
+}
+
+.attach-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .input-wrapper {

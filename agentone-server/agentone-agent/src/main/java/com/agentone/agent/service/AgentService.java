@@ -21,9 +21,6 @@ public interface AgentService {
 
     void delete(String id);
 
-    /** 发布 Agent */
-    AgentVO publish(String id);
-
     /** 停用 Agent */
     AgentVO stop(String id);
 

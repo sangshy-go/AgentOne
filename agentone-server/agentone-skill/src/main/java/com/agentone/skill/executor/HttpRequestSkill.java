@@ -9,10 +9,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
-import java.net.InetAddress;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
@@ -46,29 +42,50 @@ public class HttpRequestSkill implements SkillExecutor {
             Map<String, Object> params = invocation.getParams();
             String method = getStringParam(params, "method", "GET").toUpperCase();
             String url = getStringParam(params, "url", null);
-            Long timeout = getLongParam(params, "timeout", DEFAULT_TIMEOUT_MS);
+            // 超时优先级：本次调用 timeoutMs > params.timeout > 默认 10s
+            Long timeout = invocation.getTimeoutMs() != null && invocation.getTimeoutMs() > 0
+                    ? invocation.getTimeoutMs()
+                    : getLongParam(params, "timeout", DEFAULT_TIMEOUT_MS);
 
             if (url == null || url.isBlank()) {
                 return SkillResult.failure("URL 不能为空", System.currentTimeMillis() - startTime);
             }
 
             // S5: SSRF 防护——校验协议与主机，禁止访问内网 / 链路本地地址
-            validateUrl(url);
+            UrlSafetyUtil.validate(url);
 
             // 构建请求
             WebClient.RequestBodySpec requestSpec = webClient
                     .method(HttpMethod.valueOf(method))
                     .uri(url);
 
-            // 添加请求头
-            @SuppressWarnings("unchecked")
-            Map<String, String> headers = (Map<String, String>) params.get("headers");
-            if (headers != null) {
-                headers.forEach(requestSpec::header);
+            // 添加请求头：LLM 可能给出数字/布尔等非字符串值，
+            // 直接强转 Map<String,String> 会 ClassCastException，统一按字符串归一化
+            Object headersObj = params.get("headers");
+            if (headersObj instanceof Map<?, ?> headers) {
+                headers.forEach((name, value) -> {
+                    if (name != null && value != null) {
+                        requestSpec.header(String.valueOf(name), String.valueOf(value));
+                    }
+                });
+            }
+
+            // 读取请求体：schema 已声明 body 参数，此前执行时从未附加，导致 POST 永远为空 body。
+            // 仅对支持 body 的方法（POST/PUT/PATCH/DELETE）附加，GET 不带 body。
+            Object body = params.get("body");
+            boolean hasBody = body != null
+                    && !(body instanceof Map && ((Map<?, ?>) body).isEmpty());
+            boolean methodSupportsBody = method.equals("POST") || method.equals("PUT")
+                    || method.equals("PATCH") || method.equals("DELETE");
+
+            WebClient.RequestHeadersSpec<?> finalSpec = requestSpec;
+            if (hasBody && methodSupportsBody) {
+                // bodyValue 对 Map/对象默认序列化为 application/json（若 headers 已指定 Content-Type 则尊重之）
+                finalSpec = requestSpec.bodyValue(body);
             }
 
             // 发送请求并捕获真实状态码（非硬编码 200）
-            org.springframework.http.ResponseEntity<String> responseEntity = requestSpec
+            org.springframework.http.ResponseEntity<String> responseEntity = finalSpec
                     .retrieve()
                     .toEntity(String.class)
                     .timeout(Duration.ofMillis(timeout))
@@ -100,6 +117,7 @@ public class HttpRequestSkill implements SkillExecutor {
                 .type("builtin")
                 .version("1.0.0")
                 .source("agentone")
+                .category(SkillCategories.IT)
                 .enabled(true)
                 .inputSchema(Map.of(
                         "type", "object",
@@ -113,43 +131,6 @@ public class HttpRequestSkill implements SkillExecutor {
                         "required", new String[]{"url"}
                 ))
                 .build();
-    }
-
-    /**
-     * S5: SSRF 防护
-     * 仅允许 http/https；解析主机并拒绝环回 / 私网 / 链路本地 / 通配地址，
-     * 防止打 127.0.0.1、169.254.169.254（云元数据）等内网地址。
-     * 注：存在 DNS 重绑定理论风险（检查与连接时解析结果可能不同），
-     * 生产环境建议对解析到的地址直连而非依赖主机名（后续增强）。
-     */
-    private void validateUrl(String url) {
-        if (url == null || url.isBlank()) {
-            throw new IllegalArgumentException("URL 不能为空");
-        }
-        URI uri;
-        try {
-            uri = new URI(url);
-        } catch (URISyntaxException e) {
-            throw new IllegalArgumentException("URL 格式非法: " + url);
-        }
-        String scheme = uri.getScheme();
-        if (scheme == null || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))) {
-            throw new IllegalArgumentException("仅支持 http/https 协议，禁止: " + scheme);
-        }
-        String host = uri.getHost();
-        if (host == null || host.isBlank()) {
-            throw new IllegalArgumentException("URL 缺少主机名");
-        }
-        InetAddress addr;
-        try {
-            addr = InetAddress.getByName(host);
-        } catch (UnknownHostException e) {
-            throw new IllegalArgumentException("无法解析主机: " + host);
-        }
-        if (addr.isAnyLocalAddress() || addr.isLoopbackAddress()
-                || addr.isLinkLocalAddress() || addr.isSiteLocalAddress()) {
-            throw new IllegalArgumentException("禁止访问内网 / 保留地址: " + host);
-        }
     }
 
     private String getStringParam(Map<String, Object> params, String key, String defaultValue) {

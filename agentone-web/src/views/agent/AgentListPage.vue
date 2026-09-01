@@ -72,7 +72,7 @@
     </div>
 
     <!-- Empty State -->
-    <div v-else class="page-card" style="text-align: center; padding: 80px 24px;">
+    <div v-if="agents.length === 0" class="page-card" style="text-align: center; padding: 80px 24px;">
       <div style="font-size: 56px; opacity: 0.3; margin-bottom: 16px;">
         <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" style="color: var(--primary);">
           <circle cx="12" cy="9" r="3" /><circle cx="8" cy="16" r="2" /><circle cx="16" cy="16" r="2" />
@@ -162,6 +162,7 @@ function getGradient(name: string) {
 function statusLabel(status: string) {
   const map: Record<string, string> = {
     published: '已发布',
+    pending_review: '审批中',
     testing: '测试中',
     draft: '草稿',
     stopped: '已停用',

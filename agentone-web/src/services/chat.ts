@@ -1,9 +1,49 @@
 import api from './api'
-import type { Result, PageResult, ChatSession, ChatMessage, ChatResponse } from '@/types'
+import type { Result, PageResult, ChatSession, ChatMessage, ChatResponse, ChatMessageAttachment } from '@/types'
 
 /** 同步对话 */
-export function chat(agentId: string, message: string, sessionId?: string) {
-  return api.post<Result<ChatResponse>>('/api/chat', { agentId, message, sessionId, stream: false })
+export function chat(
+  agentId: string,
+  message: string,
+  sessionId?: string,
+  attachmentIds: string[] = []
+) {
+  return api.post<Result<ChatResponse>>('/api/chat', {
+    agentId, message, sessionId, stream: false, attachmentIds,
+  })
+}
+
+/** 上传对话附件（multipart 单文件） */
+export function uploadAttachment(file: File) {
+  const form = new FormData()
+  form.append('file', file)
+  return api.post<Result<ChatMessageAttachment>>('/api/chat/attachments', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120_000,
+  })
+}
+
+/** 附件在线预览/下载 URL（同源，Cookie 自动携带） */
+export function attachmentUrl(id: string): string {
+  return `/api/chat/attachments/${id}`
+}
+
+/**
+ * 解析消息 attachments 字段：后端可能下发 JSON 字符串或已解析数组。
+ * 统一返回 ChatMessageAttachment[]。
+ */
+export function parseAttachments(raw: unknown): ChatMessageAttachment[] {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw as ChatMessageAttachment[]
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? (parsed as ChatMessageAttachment[]) : []
+    } catch {
+      return []
+    }
+  }
+  return []
 }
 
 /**
@@ -24,7 +64,8 @@ export function chatStream(
   onDelta: (chunk: string) => void,
   onThinking: (chunk: string) => void,
   onDone: (sessionId: string) => void,
-  onError: (err: string) => void
+  onError: (err: string) => void,
+  attachmentIds: string[] = []
 ): AbortController {
   const controller = new AbortController()
 
@@ -36,7 +77,7 @@ export function chatStream(
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',
     },
-    body: JSON.stringify({ agentId, message, sessionId, stream: true }),
+    body: JSON.stringify({ agentId, message, sessionId, stream: true, attachmentIds }),
     signal: controller.signal,
     credentials: 'include',
   })
@@ -67,8 +108,9 @@ export function chatStream(
         for (const part of parts) {
           const { data, event } = parseSseEvent(part)
           if (event === 'session') {
-            // 后端推送 sessionId 的第一个事件
-            lastSessionId = data
+            // 后端推送 sessionId 的第一个事件。可能为 JSON（含 sessionId/id 字段），
+            // 也可能为纯文本；统一抽取出真正的 sessionId，避免 loadMessages 因误用整段 JSON 而失败。
+            lastSessionId = extractSessionId(data) || lastSessionId
             continue
           }
           if (event === 'thinking') {
@@ -120,6 +162,26 @@ function parseSseEvent(raw: string): { event: string; data: string } {
     else if (line.startsWith('data:')) data += (data ? '\n' : '') + line.slice(5).trim()
   }
   return { event, data }
+}
+
+/**
+ * 从 session 事件的 data 中解析出 sessionId。
+ * - 若为 JSON（如 {"sessionId":"...", ...} 或 {"id":"..."}），取对应字段；
+ * - 否则视为纯文本 sessionId 原样返回。
+ */
+function extractSessionId(data: string): string {
+  if (!data) return ''
+  const trimmed = data.trim()
+  try {
+    const obj = JSON.parse(trimmed)
+    if (obj && typeof obj === 'object') {
+      const id = (obj as Record<string, unknown>).sessionId ?? (obj as Record<string, unknown>).id
+      return typeof id === 'string' && id ? id : ''
+    }
+  } catch {
+    // 非 JSON：按纯文本处理
+  }
+  return trimmed
 }
 
 /** 会话列表（分页） */

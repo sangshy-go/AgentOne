@@ -15,6 +15,7 @@ public class ChatMessageVO {
     private String content;
     private Integer tokenCount;
     private String skillCalls;  // JSON: Skill 调用详情
+    private String attachments; // JSON: 附件元信息列表
     private Integer durationMs;
     private String traceId;
     private LocalDateTime createdAt;

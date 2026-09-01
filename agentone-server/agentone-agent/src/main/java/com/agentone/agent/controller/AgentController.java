@@ -10,7 +10,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 
 /**
  * Agent 管理 Controller
@@ -48,11 +47,6 @@ public class AgentController {
     public Result<Void> delete(@PathVariable String id) {
         agentService.delete(id);
         return Result.ok();
-    }
-
-    @PostMapping("/{id}/publish")
-    public Result<AgentVO> publish(@PathVariable String id) {
-        return Result.ok(agentService.publish(id));
     }
 
     @PostMapping("/{id}/stop")

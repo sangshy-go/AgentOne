@@ -15,19 +15,41 @@
           </div>
           <div class="badge badge-neutral">v{{ agent?.currentVersion || 1 }}</div>
         </div>
+        <div v-if="agent?.status === 'pending_review'" class="ad-review-hint">
+          审批中：配置已冻结（审什么 = 发什么），可继续测试对话；如需修改请先撤回申请。
+        </div>
       </div>
       <div class="ad-actions">
-        <button class="btn-test-chat" @click="chatDrawerVisible = true">
+        <!-- 发布前为「测试对话」、发布后为「试用对话」；停用/归档后端禁止对话（3003），无需暴露入口 -->
+        <button
+          v-if="canChat"
+          class="btn-test-chat"
+          @click="chatDrawerVisible = true"
+        >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
           </svg>
-          测试对话
+          {{ chatLabel }}
         </button>
-        <button class="btn-gradient" @click="handlePublish" :disabled="agent?.status === 'published'">
+        <button
+          v-if="agent?.status === 'pending_review' && isSubmitter"
+          class="btn-secondary-custom"
+          @click="handleWithdraw"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 14L4 9l5-5" /><path d="M4 9h10a6 6 0 010 12h-3" />
+          </svg>
+          撤回申请
+        </button>
+        <button
+          class="btn-gradient"
+          @click="handleSubmitReview"
+          :disabled="agent?.status === 'published' || agent?.status === 'pending_review'"
+        >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M22 2L11 13" /><path d="M22 2l-7 20-4-9-9-4 20-7z" />
           </svg>
-          发布
+          提交发布审批
         </button>
         <button class="btn-secondary-custom" @click="router.push('/agents')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -67,11 +89,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import type { Agent } from '@/types'
-import { getAgent, updateAgent, publishAgent } from '@/services/agent'
+import { getAgent, updateAgent } from '@/services/agent'
+import {
+  submitPublishRequest,
+  listPublishRequests,
+  withdrawPublishRequest,
+} from '@/services/approval'
+import { useAuthStore } from '@/stores/auth'
 import PersonaTab from './tabs/PersonaTab.vue'
 import ModelTab from './tabs/ModelTab.vue'
 import SkillsTab from './tabs/SkillsTab.vue'
@@ -83,10 +111,14 @@ import ChatDrawer from '@/components/ChatDrawer.vue'
 const route = useRoute()
 const router = useRouter()
 const message = useMessage()
+const authStore = useAuthStore()
 
 const agent = ref<Agent | null>(null)
 const activeTab = ref('persona')
 const chatDrawerVisible = ref(false)
+/** 当前 pending 申请单（用于判断「撤回」按钮可见性：仅提交人本人可撤回） */
+const pendingRequestId = ref('')
+const isSubmitter = ref(false)
 
 const tabs = [
   { key: 'persona', label: '人格与指令' },
@@ -97,9 +129,20 @@ const tabs = [
   { key: 'advanced', label: '高级' },
 ]
 
+/**
+ * 对话入口可见性（与后端 ChatServiceImpl.loadAgent 放行范围一致）：
+ * - draft/testing/pending_review → 「测试对话」（发布前验证；审批中提示文案承诺可继续测试）
+ * - published → 「试用对话」（控制台是发布后最基础的消费渠道，API/IM 是附加渠道而非替代）
+ * - stopped/archived → 隐藏（后端统一 3003 拒绝对话）
+ */
+const CHATTABLE_STATUSES = ['draft', 'testing', 'pending_review', 'published']
+const canChat = computed(() => !!agent.value && CHATTABLE_STATUSES.includes(agent.value.status))
+const chatLabel = computed(() => (agent.value?.status === 'published' ? '试用对话' : '测试对话'))
+
 function statusLabel(status: string) {
   const map: Record<string, string> = {
     published: '已发布',
+    pending_review: '审批中',
     testing: '测试中',
     draft: '草稿',
     stopped: '已停用',
@@ -113,8 +156,26 @@ async function loadAgent() {
   try {
     const res = await getAgent(id)
     agent.value = res.data.data
+    await loadPendingRequest()
   } catch {
     message.error('加载 Agent 失败')
+  }
+}
+
+/** 审批中时拉取本 Agent 的 pending 申请，判定当前用户是否为提交人 */
+async function loadPendingRequest() {
+  pendingRequestId.value = ''
+  isSubmitter.value = false
+  if (agent.value?.status !== 'pending_review') return
+  try {
+    const res = await listPublishRequests({ agentId: agent.value.id, status: 'pending', page: 1, size: 1 })
+    const record = res.data.data?.records?.[0]
+    if (record) {
+      pendingRequestId.value = record.id
+      isSubmitter.value = record.submitterId === authStore.userId
+    }
+  } catch {
+    /* 申请单信息加载失败不影响详情页主流程 */
   }
 }
 
@@ -129,14 +190,29 @@ async function handleSave(data: Partial<Agent>) {
   }
 }
 
-async function handlePublish() {
+/** 课题⑩：发布唯一路径 = 提交审批，由他人复核通过后上线 */
+async function handleSubmitReview() {
   if (!agent.value) return
   try {
-    await publishAgent(agent.value.id)
-    agent.value.status = 'published'
-    message.success('发布成功')
+    await submitPublishRequest(agent.value.id)
+    agent.value.status = 'pending_review'
+    await loadPendingRequest()
+    message.success('已提交发布审批，等待管理员审核')
   } catch (e: unknown) {
-    message.error(e instanceof Error ? e.message : '发布失败')
+    message.error(e instanceof Error ? e.message : '提交审批失败')
+  }
+}
+
+async function handleWithdraw() {
+  if (!pendingRequestId.value) return
+  try {
+    await withdrawPublishRequest(pendingRequestId.value)
+    if (agent.value) agent.value.status = 'draft'
+    pendingRequestId.value = ''
+    isSubmitter.value = false
+    message.success('申请已撤回，Agent 回到草稿状态')
+  } catch (e: unknown) {
+    message.error(e instanceof Error ? e.message : '撤回失败')
   }
 }
 
@@ -197,6 +273,18 @@ onMounted(loadAgent)
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.ad-review-hint {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--orange-bg);
+  border: 1px solid var(--orange-border);
+  color: var(--orange);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
 }
 
 .ad-actions {

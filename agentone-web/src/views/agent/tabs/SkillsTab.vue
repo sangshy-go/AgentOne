@@ -18,6 +18,7 @@
       v-model:show="showAdd"
       preset="dialog"
       title="绑定 Skill"
+      style="width: 640px;"
       positive-text="绑定"
       negative-text="取消"
       :positive-button-props="{ loading: binding, disabled: selectedSkills.length === 0 }"
@@ -25,24 +26,25 @@
     >
       <n-input v-model:value="searchKey" placeholder="搜索 Skill..." style="margin-bottom: 12px;" />
       <n-checkbox-group v-model:value="selectedSkills">
-        <n-space vertical>
-          <n-checkbox
-            v-for="s in filteredAvailable"
-            :key="s.id"
-            :value="s.id"
-            :label="`${s.name}（${s.type}）`"
-            :disabled="boundSkillIds.has(s.id)"
-          />
-        </n-space>
+        <div v-for="group in groupedAvailable" :key="group.type" style="margin-bottom: 14px;">
+          <n-text depth="2" style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px;">
+            {{ group.label }}（{{ group.items.length }}）
+          </n-text>
+          <n-space vertical>
+            <n-checkbox
+              v-for="s in group.items"
+              :key="s.id"
+              :value="s.id"
+              :disabled="boundSkillIds.has(s.id)"
+            >
+              <span>{{ s.name }}</span>
+              <n-text v-if="s.description" depth="3" style="margin-left: 8px; font-size: 12px;">
+                {{ s.description }}
+              </n-text>
+            </n-checkbox>
+          </n-space>
+        </div>
       </n-checkbox-group>
-      <div v-if="skillTotal > skillPageSize" style="margin-top: 12px; display: flex; justify-content: center;">
-        <n-pagination
-          :page="skillPage"
-          :page-size="skillPageSize"
-          :item-count="skillTotal"
-          @update:page="handleSkillPageChange"
-        />
-      </div>
       <n-text v-if="filteredAvailable.length === 0" depth="3">没有可绑定的 Skill</n-text>
     </n-modal>
   </div>
@@ -52,17 +54,28 @@
 import { ref, h, computed, watch, onMounted } from 'vue'
 import {
   NButton, NText, NDataTable, NEmpty, NModal, NInput,
-  NCheckboxGroup, NCheckbox, NSpace, NTag, NPopconfirm, NPagination, useMessage,
+  NCheckboxGroup, NCheckbox, NSpace, NTag, NPopconfirm, useMessage,
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import type { Agent } from '@/types'
 import {
-  listSkills, listAgentSkillBindings, bindSkill, unbindSkill, toggleSkill,
+  listPlaza, listAgentSkillBindings, bindSkill, unbindSkill, toggleSkill,
   type SkillItem, type AgentSkillBinding,
 } from '@/services/skill'
 
 const props = defineProps<{ agent: Agent | null }>()
 const message = useMessage()
+
+// Skill 类型 → UI 展示名（DB 字段保持不变，仅改前端文案）
+const TYPE_LABEL: Record<string, string> = {
+  builtin: '系统内置',
+  prompt: '指令模板',
+  api: 'API 封装',
+  mcp: 'MCP 工具',
+  market: '市场安装',
+}
+// 分组排序：内置优先，MCP 靠后
+const TYPE_ORDER = ['builtin', 'prompt', 'api', 'market', 'mcp']
 
 const boundSkills = ref<AgentSkillBinding[]>([])
 const availableSkills = ref<SkillItem[]>([])
@@ -71,15 +84,25 @@ const searchKey = ref('')
 const selectedSkills = ref<string[]>([])
 const loading = ref(false)
 const binding = ref(false)
-const skillPage = ref(1)
-const skillPageSize = ref(20)
-const skillTotal = ref(0)
 
 const boundSkillIds = computed(() => new Set(boundSkills.value.map((b) => b.skillId)))
 
 const filteredAvailable = computed(() => {
   const kw = searchKey.value.trim().toLowerCase()
-  return availableSkills.value.filter((s) => !kw || s.name.toLowerCase().includes(kw))
+  return availableSkills.value.filter((s) => !kw || s.name.toLowerCase().includes(kw)
+    || (s.description || '').toLowerCase().includes(kw))
+})
+
+const groupedAvailable = computed(() => {
+  const map = new Map<string, SkillItem[]>()
+  for (const s of filteredAvailable.value) {
+    const t = s.type || 'other'
+    if (!map.has(t)) map.set(t, [])
+    map.get(t)!.push(s)
+  }
+  return TYPE_ORDER
+    .filter((t) => map.has(t))
+    .map((t) => ({ type: t, label: TYPE_LABEL[t] || t, items: map.get(t)! }))
 })
 
 async function loadBound() {
@@ -100,24 +123,17 @@ async function loadBound() {
 
 async function loadAvailable() {
   try {
-    const res = await listSkills(skillPage.value, skillPageSize.value)
-    const data = res.data.data
-    availableSkills.value = data?.records || []
-    skillTotal.value = data?.total || 0
+    // 绑定选择器走广场：只展示 active + 已发布的 MCP 工具，未发布的不出现在列表
+    const res = await listPlaza({})
+    availableSkills.value = res.data.data || []
   } catch (e: any) {
     message.error(e?.message || '加载 Skill 列表失败')
   }
 }
 
-function handleSkillPageChange(p: number) {
-  skillPage.value = p
-  loadAvailable()
-}
-
 function openAdd() {
   selectedSkills.value = []
   searchKey.value = ''
-  skillPage.value = 1
   showAdd.value = true
 }
 
@@ -165,7 +181,11 @@ async function handleToggle(row: AgentSkillBinding) {
 const columns: DataTableColumns<AgentSkillBinding> = [
   { title: 'Skill 名称', key: 'skillName' },
   { title: '类型', key: 'skillType', render(row) {
-    return h(NTag, { size: 'small', type: row.skillType === 'builtin' ? 'info' : 'success' }, () => row.skillType)
+    const tagType = row.skillType === 'builtin' ? 'info'
+      : row.skillType === 'mcp' ? 'warning'
+      : row.skillType === 'prompt' ? 'info'
+      : 'success'
+    return h(NTag, { size: 'small', type: tagType }, () => TYPE_LABEL[row.skillType] || row.skillType)
   }},
   { title: '版本', key: 'skillVersion' },
   { title: '状态', key: 'enabled', render(row) {

@@ -105,7 +105,10 @@ public class AgentServiceImpl implements AgentService {
         }
         // 只有草稿和测试中可以修改
         if (!agent.getStatus().isEditable()) {
-            throw new BusinessException(3002, "已发布的 Agent 不能直接修改，请先退回草稿");
+            String msg = agent.getStatus() == AgentStatus.PENDING_REVIEW
+                    ? "审批中的 Agent 不可编辑（审什么 = 发什么），如需修改请先撤回申请"
+                    : "已发布的 Agent 不能直接修改，请先退回草稿";
+            throw new BusinessException(3002, msg);
         }
 
         if (dto.getName() != null) agent.setName(dto.getName());
@@ -136,6 +139,10 @@ public class AgentServiceImpl implements AgentService {
         if (agent == null) {
             throw new BusinessException(ResultCode.AGENT_NOT_FOUND);
         }
+        // 审批中的 Agent 冻结：先撤回申请或完成审批，才允许删除（防审批单悬挂指向已删 Agent）
+        if (agent.getStatus() == AgentStatus.PENDING_REVIEW) {
+            throw new BusinessException(3004, "该 Agent 正在审批中，请先撤回申请或完成审批后再删除");
+        }
 
         // 级联物理删除：对话消息 → 会话 → Skill 绑定 → 知识库绑定 → Agent 本体
         // 1. 查出该 Agent 的全部会话 ID
@@ -161,26 +168,6 @@ public class AgentServiceImpl implements AgentService {
         knowledgeService.removeAllBindings(id);
         // 5. 删除 Agent 本体
         agentMapper.deleteById(id);
-    }
-
-    @Override
-    public AgentVO publish(String id) {
-        String workspaceId = RuntimeContext.getWorkspaceId();
-        AgentDO agent = agentMapper.selectOne(
-                new LambdaQueryWrapper<AgentDO>()
-                        .eq(AgentDO::getId, id)
-                        .eq(AgentDO::getWorkspaceId, workspaceId)
-        );
-        if (agent == null) {
-            throw new BusinessException(ResultCode.AGENT_NOT_FOUND);
-        }
-        agent.setStatus(agent.getStatus().transition(AgentAction.PUBLISH));
-        // NPE 防御：currentVersion 可能为 null
-        int currentVer = agent.getCurrentVersion() != null ? agent.getCurrentVersion() : 0;
-        agent.setCurrentVersion(currentVer + 1);
-        agent.setUpdatedAt(LocalDateTime.now());
-        agentMapper.updateById(agent);
-        return toVO(agent);
     }
 
     @Override

@@ -120,7 +120,8 @@ agentone:
 # ============================================================
 logging:
   level:
-    com.agentone: DEBUG
+    # 默认 INFO：避免 DEBUG 把 MyBatis SQL 参数（可能含 key_hash/BCrypt/email 等敏感字段）打印到日志
+    com.agentone: INFO
     org.springframework.ai: INFO
   pattern:
     console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"

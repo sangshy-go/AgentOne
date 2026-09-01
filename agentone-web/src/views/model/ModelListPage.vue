@@ -65,7 +65,7 @@
           </div>
           <div class="provider-detail">
             <span class="provider-detail-label">API Key</span>
-            <span class="provider-detail-value mono">{{ p.apiKey }}</span>
+            <span class="provider-detail-value mono">{{ maskKey(p.apiKey) }}</span>
           </div>
           <div v-if="checkResults[p.id]" class="provider-check-result">
             <span :class="['badge', checkResults[p.id].available ? 'badge-success' : 'badge-danger']">
@@ -117,7 +117,7 @@
     </div>
 
     <!-- Empty state -->
-    <div v-else class="page-card" style="text-align: center; padding: 80px 24px;">
+    <div v-if="providers.length === 0" class="page-card" style="text-align: center; padding: 80px 24px;">
       <div style="margin-bottom: 16px;">
         <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" style="color: var(--primary); opacity: 0.4;">
           <path d="M12 2L2 7l10 5 10-5-10-5z" />
@@ -588,6 +588,13 @@ function providerColor(provider: string): string {
     custom: 'linear-gradient(135deg, #6366f120, #6366f110)',
   }
   return map[provider] || map.custom
+}
+
+/** 脱敏展示 API Key：仅保留后 4 位，其余以 **** 替代 */
+function maskKey(key: string | undefined): string {
+  if (!key) return '—'
+  if (key.length <= 4) return '****'
+  return '****' + key.slice(-4)
 }
 </script>
 

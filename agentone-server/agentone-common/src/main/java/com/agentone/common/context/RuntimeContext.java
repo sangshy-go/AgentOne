@@ -28,6 +28,11 @@ public final class RuntimeContext {
         return ctx != null ? ctx.getWorkspaceId() : null;
     }
 
+    public static String getRole() {
+        Context ctx = HOLDER.get();
+        return ctx != null ? ctx.getRole() : null;
+    }
+
     public static void clear() {
         HOLDER.remove();
     }

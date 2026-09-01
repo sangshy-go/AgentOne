@@ -48,6 +48,21 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/knowledge/KnowledgeListPage.vue'),
       },
       {
+        path: '/skills',
+        name: 'Skills',
+        component: () => import('@/views/skill/SkillCenterPage.vue'),
+      },
+      {
+        path: '/skills/create',
+        name: 'SkillCreate',
+        component: () => import('@/views/skill/SkillCreatePage.vue'),
+      },
+      {
+        path: '/mcp',
+        name: 'Mcp',
+        component: () => import('@/views/mcp/McpServerPage.vue'),
+      },
+      {
         path: '/models',
         name: 'Models',
         component: () => import('@/views/model/ModelListPage.vue'),
@@ -56,6 +71,21 @@ const routes: RouteRecordRaw[] = [
         path: '/api-keys',
         name: 'ApiKeys',
         component: () => import('@/views/apikey/ApiKeyListPage.vue'),
+      },
+      {
+        path: '/im-bots',
+        name: 'ImBots',
+        component: () => import('@/views/im/ImBotPage.vue'),
+      },
+      {
+        path: '/approvals',
+        name: 'Approvals',
+        component: () => import('@/views/approval/ApprovalsPage.vue'),
+      },
+      {
+        path: '/monitor',
+        name: 'Monitor',
+        component: () => import('@/views/monitor/MonitorPage.vue'),
       },
       {
         path: '/settings',

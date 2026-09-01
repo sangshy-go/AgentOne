@@ -10,10 +10,11 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3000,
+    port: 8090,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        // 后端端口与根目录 .env 的 API_PORT 一致
+        target: 'http://localhost:8081',
         changeOrigin: true,
       },
     },

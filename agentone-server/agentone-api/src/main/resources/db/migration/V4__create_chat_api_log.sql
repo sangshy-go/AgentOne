@@ -114,17 +114,4 @@ CREATE TABLE task_execution_log (
 
 CREATE INDEX idx_task_exec_task ON task_execution_log(task_id);
 
--- MCP Server 表
-CREATE TABLE mcp_server (
-    id             VARCHAR(36)  PRIMARY KEY DEFAULT uuid_generate_v4(),
-    workspace_id   VARCHAR(36)  NOT NULL REFERENCES workspace(id),
-    name           VARCHAR(100) NOT NULL,
-    transport_type VARCHAR(10)  NOT NULL,  -- stdio / sse
-    command        TEXT,
-    url            VARCHAR(500),
-    auth_config    JSONB        NOT NULL DEFAULT '{}',
-    status         VARCHAR(20)  NOT NULL DEFAULT 'disconnected',  -- connected / disconnected / error
-    created_at     TIMESTAMP    NOT NULL DEFAULT now()
-);
-
-CREATE INDEX idx_mcp_workspace ON mcp_server(workspace_id);
+-- 注：MCP Server 表已移至 V16__create_mcp_server.sql（含 transport/args/headers/timeout_ms 等完整字段）

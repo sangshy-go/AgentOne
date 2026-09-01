@@ -188,7 +188,7 @@
               ref="fileInputRef"
               type="file"
               multiple
-              accept=".txt,.md,.pdf,.doc,.docx,.html,.csv"
+              accept=".txt,.md,.pdf,.doc,.docx,.csv"
               style="display: none;"
               @change="handleFileSelect"
             />

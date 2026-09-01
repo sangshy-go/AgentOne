@@ -20,6 +20,12 @@ import java.io.InputStream;
 @Component
 public class DocumentParser {
 
+    /**
+     * 解析输出上限（10MB）。超过该长度 Tika 会抛出 WriteLimitReachedException（被下方 catch 捕获，
+     * 上传流程会将该文档标记为 error），避免无限制解析超大 PDF 时 OOM / 阻塞 HTTP 线程。
+     */
+    private static final int MAX_PARSE_OUTPUT_LENGTH = 10 * 1024 * 1024;
+
     private final AutoDetectParser parser = new AutoDetectParser();
 
     /**
@@ -52,7 +58,7 @@ public class DocumentParser {
      */
     public String parse(InputStream inputStream, String fileType) {
         try {
-            BodyContentHandler handler = new BodyContentHandler(-1);
+            BodyContentHandler handler = new BodyContentHandler(MAX_PARSE_OUTPUT_LENGTH);
             Metadata metadata = new Metadata();
             ParseContext context = new ParseContext();
             context.set(Parser.class, parser);

@@ -99,6 +99,16 @@ export interface ChatSession {
   updatedAt: string
 }
 
+/** 对话附件元信息 */
+export interface ChatMessageAttachment {
+  id: string
+  kind: 'image' | 'document'
+  fileName: string
+  fileSize: number
+  mimeType: string
+  createdAt?: string
+}
+
 /** 消息 */
 export interface ChatMessage {
   id: string
@@ -106,6 +116,7 @@ export interface ChatMessage {
   content: string
   tokenCount: number
   skillCalls: string | null
+  attachments?: ChatMessageAttachment[] | string | null
   durationMs: number | null
   traceId: string | null
   createdAt: string
@@ -179,4 +190,120 @@ export interface ModelCheckResult {
   available: boolean
   message: string
   latencyMs: number
+}
+
+/** 仪表盘统计（课题⑥） */
+export interface DailyChatStat {
+  statDate: string
+  statCount: number
+}
+
+export interface DashboardStats {
+  agentCount: number
+  knowledgeCount: number
+  todayChatCount: number
+  activeUsers7d: number
+  dailyChats: DailyChatStat[]
+  recentAgents: { id: string; name: string; category: string; updatedAt: string }[]
+}
+
+/** 监控-会话 */
+export interface MonitorSession {
+  id: string
+  title: string
+  agentId: string
+  agentName: string
+  userEmail: string
+  messageCount: number
+  tokenCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+/** 监控-时间线条目（消息或 Skill 调用） */
+export interface TimelineItem {
+  kind: 'message' | 'skill_call'
+  id: string
+  role?: string
+  content?: string
+  skillId?: string
+  skillName?: string
+  status?: string
+  errorMessage?: string
+  durationMs?: number
+  tokenCount?: number
+  createdAt: string
+}
+
+export interface SessionTimeline {
+  session: MonitorSession
+  items: TimelineItem[]
+}
+
+/** 监控-Skill 调用记录 */
+export interface SkillCallRecord {
+  id: string
+  agentId: string
+  agentName: string
+  skillId: string
+  skillName: string
+  sessionId: string
+  status: string
+  errorMessage: string
+  durationMs: number
+  tokenCount: number
+  createdAt: string
+}
+
+/** 工作空间成员 */
+export interface Member {
+  userId: string
+  email: string
+  nickname: string
+  role: string
+  joinedAt: string
+}
+
+/** Agent 发布审批申请（课题⑩） */
+export interface PublishRequest {
+  id: string
+  agentId: string
+  agentName: string
+  status: 'pending' | 'approved' | 'rejected' | 'withdrawn'
+  submitterId: string
+  submitterEmail: string
+  reviewerId: string | null
+  reviewerEmail: string | null
+  reviewComment: string | null
+  submittedAt: string
+  reviewedAt: string | null
+  /** Agent 当前实时状态（列表展示用） */
+  agentStatus: string | null
+}
+
+/** 审计日志（课题⑩） */
+export interface AuditLog {
+  id: string
+  operatorId: string
+  action: string
+  resourceType: string
+  resourceId: string | null
+  method: string | null
+  path: string | null
+  operatorEmail: string | null
+  createdAt: string
+}
+
+/** IM 机器人 */
+export interface ImBot {
+  id: string
+  name: string
+  platform: 'dingtalk' | 'wecom'
+  mode: 'webhook' | 'callback'
+  agentId: string | null
+  status: 'active' | 'disabled'
+  createdBy: string
+  createdAt: string
+  /** 配置掩码摘要（凭证不回传） */
+  configMasked: Record<string, string>
 }

@@ -102,8 +102,16 @@ public class WorkspaceController {
      */
     @PutMapping("/{id}")
     public Result<WorkspaceVO> update(@PathVariable String id, @Valid @RequestBody WorkspaceDTO dto) {
-        if (!workspaceService.checkPermission(RuntimeContext.getUserId(), id)) {
+        String userId = RuntimeContext.getUserId();
+        if (!workspaceService.checkPermission(userId, id)) {
             return Result.fail(2002, "无权操作该工作空间");
+        }
+
+        // 空间信息变更限管理员/所有者（observer/developer 不应改空间设置；
+        // /api/workspaces 在 RBAC 过滤器的公共白名单内，需在此显式把关）
+        String role = workspaceService.getUserRole(userId, id);
+        if (!"owner".equals(role) && !"admin".equals(role)) {
+            return Result.fail(2003, "仅管理员或所有者可修改工作空间信息");
         }
 
         WorkspaceDO workspace = workspaceMapper.selectById(id);
@@ -124,21 +132,27 @@ public class WorkspaceController {
     }
 
     /**
-     * 删除工作空间（软删除）
+     * 删除工作空间（软删除，仅 owner 可操作）
      */
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable String id) {
-        if (!workspaceService.checkPermission(RuntimeContext.getUserId(), id)) {
+        String userId = RuntimeContext.getUserId();
+        if (!workspaceService.checkPermission(userId, id)) {
             return Result.fail(2002, "无权操作该工作空间");
+        }
+
+        // 仅 owner 可删除工作空间
+        String role = workspaceService.getUserRole(userId, id);
+        if (!"owner".equals(role)) {
+            return Result.fail(2003, "仅工作空间所有者可删除");
         }
 
         WorkspaceDO workspace = workspaceMapper.selectById(id);
         if (workspace == null) {
             return Result.fail(2001, "工作空间不存在");
         }
-        workspace.setDeletedAt(LocalDateTime.now());
-        workspace.setUpdatedAt(LocalDateTime.now());
-        workspaceMapper.updateById(workspace);
+        // 软删除工作空间并清理 user_workspace 关联（事务内完成，默认工作空间自动重算）
+        workspaceService.deleteWorkspace(id);
         return Result.ok();
     }
 }

@@ -34,3 +34,4 @@ Agent开源系统分析报告.md
 # ---- 工具缓存 ----
 .playwright-cli/
 .workbuddy/
+.qoder/

@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import org.springframework.data.redis.connection.RedisConnection;
+
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.util.LinkedHashMap;
@@ -56,24 +58,25 @@ public class HealthCheckController {
             status.put("status", valid ? "UP" : "DOWN");
             status.put("type", "PostgreSQL");
         } catch (Exception e) {
-            log.warn("数据库健康检查失败: {}", e.getMessage());
+            log.warn("数据库健康检查失败");
             status.put("status", "DOWN");
-            status.put("error", e.getMessage());
+            // 不向外部暴露连接串/主机等内部细节
+            status.put("error", "unavailable");
         }
         return status;
     }
 
     private Map<String, Object> checkRedis() {
         Map<String, Object> status = new LinkedHashMap<>();
-        try {
-            String pong = redisTemplate.getConnectionFactory()
-                    .getConnection().ping();
+        // try-with-resources 确保连接关闭，避免连接泄漏
+        try (RedisConnection conn = redisTemplate.getConnectionFactory().getConnection()) {
+            String pong = conn.ping();
             status.put("status", pong != null ? "UP" : "DOWN");
             status.put("type", "Redis");
         } catch (Exception e) {
-            log.warn("Redis 健康检查失败: {}", e.getMessage());
+            log.warn("Redis 健康检查失败");
             status.put("status", "DOWN");
-            status.put("error", e.getMessage());
+            status.put("error", "unavailable");
         }
         return status;
     }
