@@ -27,6 +27,8 @@ Configure models → Build knowledge bases → Create Agents → Chat → Integr
 
 AgentOne is a ready-to-use AI Agent platform. It packages everything an AI assistant needs — model integration, RAG knowledge bases, Agent orchestration, a Skill ecosystem, MCP integration, IM bots, streaming chat, multi-tenancy, and an open API — into a single product with a full admin console. No code required: build your own enterprise AI assistant by clicking through a few pages, then plug it into any business system via API or IM bot.
 
+![AgentOne homepage — transparent, auditable, in control](./docs/assets/homepage.png)
+
 **Built for regulated environments** — banking, insurance, finance, and state-owned enterprises:
 
 - **100% on-premise**: deploy via Docker or from source; no mandatory outbound calls; models can run fully internal (Ollama, etc.)
