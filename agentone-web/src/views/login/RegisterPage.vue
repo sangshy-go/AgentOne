@@ -1,7 +1,7 @@
 <template>
   <div class="login-container">
     <div class="login-card">
-      <div class="login-logo">灵一</div>
+      <img class="login-logo" :src="'/agentone-logo-stacked.svg'" alt="AgentOne 灵一 · 企业级 Agent 中台" />
       <h1 class="login-title">创建账号</h1>
       <p class="login-subtitle">加入 AgentOne · 开启 AI Agent 之旅</p>
 
@@ -147,18 +147,10 @@ async function handleRegister() {
 }
 
 .login-logo {
-  width: 68px;
-  height: 68px;
-  border-radius: var(--radius-lg);
-  background: var(--grad-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 24px;
-  font-weight: 800;
-  margin: 0 auto 22px;
-  box-shadow: var(--glow-primary-md);
+  display: block;
+  height: 64px;
+  width: auto;
+  margin: 0 auto 18px;
   animation: float 3s ease-in-out infinite;
 }
 

@@ -6,9 +6,7 @@
     <header class="nav" :class="{ scrolled: navScrolled }">
       <div class="nav-inner">
         <div class="nav-brand" @click="scrollTop">
-          <div class="nav-logo">灵一</div>
-          <span class="nav-name">灵一 AgentOne</span>
-          <span class="nav-version">开源</span>
+          <img class="nav-logo" :src="'/agentone-logo-stacked.svg'" alt="AgentOne 灵一 · 企业级 Agent 中台" />
         </div>
         <nav class="nav-links">
           <span class="nav-link" @click="goAnchor('features')">核心亮点</span>
@@ -341,11 +339,8 @@
     <footer class="footer">
       <div class="footer-inner">
         <div class="footer-brand">
-          <div class="nav-logo">灵一</div>
-          <div>
-            <div class="footer-name">灵一 AgentOne</div>
-            <div class="footer-slogan">让每一次 AI 决策，都经得起审视。</div>
-          </div>
+          <img class="footer-logo" :src="'/agentone-logo-inline-light.svg'" alt="AgentOne 灵一" />
+          <div class="footer-slogan">让每一次 AI 决策，都经得起审视。</div>
         </div>
         <div class="footer-links">
           <span @click="goAnchor('features')">核心亮点</span>
@@ -524,7 +519,7 @@ const compare = [
 .nav-inner {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 14px 32px;
+  padding: 8px 32px;
   display: flex;
   align-items: center;
   gap: 32px;
@@ -532,39 +527,13 @@ const compare = [
 .nav-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   cursor: pointer;
 }
 .nav-logo {
-  width: 38px;
-  height: 38px;
-  border-radius: var(--radius);
-  background: var(--grad-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 800;
-  box-shadow: var(--glow-primary-md);
-  flex-shrink: 0;
-}
-.nav-name {
-  font-size: 15px;
-  font-weight: 800;
-  letter-spacing: -0.4px;
-  color: var(--ink);
-  white-space: nowrap;
-}
-.nav-version {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--primary);
-  background: var(--primary-light);
-  border: 1px solid var(--primary-border);
-  border-radius: 20px;
-  padding: 2px 8px;
-  white-space: nowrap;
+  height: 56px;
+  width: auto;
+  display: block;
 }
 .nav-links {
   display: flex;
@@ -1501,19 +1470,17 @@ const compare = [
 }
 .footer-brand {
   display: flex;
-  align-items: center;
-  gap: 14px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
 }
-.footer-name {
-  font-size: 15px;
-  font-weight: 800;
-  color: #fff;
-  letter-spacing: -0.3px;
+.footer-logo {
+  height: 40px;
+  width: auto;
 }
 .footer-slogan {
   font-size: 12.5px;
   color: #64748B;
-  margin-top: 2px;
 }
 .footer-links {
   display: flex;
@@ -1567,7 +1534,8 @@ const compare = [
 }
 @media (max-width: 640px) {
   .nav-links { display: none; }
-  .nav-inner { padding: 12px 20px; gap: 16px; }
+  .nav-inner { padding: 8px 20px; gap: 16px; }
+  .nav-logo { height: 40px; }
   .hero { padding: 120px 20px 40px; }
   .hero-title { font-size: 32px; }
   .hero-ctas { flex-direction: column; }

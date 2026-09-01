@@ -5,11 +5,8 @@
       <!-- Logo -->
       <div class="sidebar-header">
         <a class="sidebar-logo">
-          <div class="icon-box">灵一</div>
-          <div v-if="!collapsed" class="logo-text">
-            灵一 AgentOne
-            <span class="version">v1.0</span>
-          </div>
+          <img v-if="collapsed" class="logo-icon" :src="'/agentone-luminous-icon-tight.svg'" alt="AgentOne" />
+          <img v-else class="logo-lockup" :src="'/agentone-logo-inline.svg'" alt="AgentOne 灵一" />
         </a>
       </div>
 
@@ -304,49 +301,23 @@ function handleLogout() {
 .sidebar-logo {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   text-decoration: none;
   letter-spacing: -0.5px;
 }
 
-.icon-box {
+.logo-icon {
   width: 40px;
   height: 40px;
-  background: var(--grad-primary);
-  border-radius: var(--radius);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 14px;
-  font-weight: 800;
-  box-shadow: var(--glow-primary-md);
   flex-shrink: 0;
 }
 
-.logo-text {
-  font-size: 15px;
-  font-weight: 800;
-  background: var(--grad-text);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
+.logo-lockup {
+  height: 46px;
+  width: auto;
+  display: block;
 }
 
-.version {
-  font-size: 10px;
-  color: var(--text-muted);
-  font-weight: 600;
-  background: var(--surface);
-  padding: 2px 8px;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-  -webkit-text-fill-color: var(--text-muted);
-}
 
 /* Workspace Switcher */
 .workspace-switcher {
