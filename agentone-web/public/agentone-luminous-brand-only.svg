@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="220" viewBox="0 0 820 220" role="img" aria-labelledby="title desc">
+  <title id="title">AgentOne 灵一 — Brand-only lockup</title>
+  <desc id="desc">AgentOne luminous primary logo with the Chinese name placed beneath the English wordmark and no product descriptor.</desc>
+  <defs>
+    <linearGradient id="shellGlow" x1="48" y1="36" x2="178" y2="168" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9A78FF"/>
+      <stop offset="0.52" stop-color="#706CF6"/>
+      <stop offset="1" stop-color="#55C8F3"/>
+    </linearGradient>
+    <linearGradient id="wordGlow" x1="203" y1="42" x2="334" y2="92" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8B6FFB"/>
+      <stop offset="0.62" stop-color="#6D70F6"/>
+      <stop offset="1" stop-color="#42BFE8"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(28 10)">
+    <rect x="10" y="82" width="27" height="42" rx="13.5" fill="#49D9E3"/>
+    <rect x="163" y="82" width="27" height="42" rx="13.5" fill="#49D9E3"/>
+    <path d="M65 30H135C162 30 180 50 180 77V127C180 157 157 177 128 177H72C43 177 20 157 20 127V77C20 50 38 30 65 30Z" fill="url(#shellGlow)"/>
+    <path d="M57 57C67 45 82 40 98 40" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" opacity="0.48"/>
+    <circle cx="109" cy="40" r="3.5" fill="#FFFFFF" opacity="0.52"/>
+    <rect x="43" y="65" width="114" height="79" rx="39.5" fill="#FBFAFF"/>
+    <ellipse cx="79" cy="104" rx="8" ry="9" fill="#5752B6"/>
+    <ellipse cx="121" cy="104" rx="8" ry="9" fill="#5752B6"/>
+  </g>
+  <g transform="translate(258 37)">
+    <text x="0" y="84" fill="#4F628B" font-family="Avenir Next Rounded, Nunito Sans, SF Pro Rounded, -apple-system, sans-serif" font-size="66" font-weight="700" letter-spacing="-1.7" textLength="187" lengthAdjust="spacingAndGlyphs">Agent</text>
+    <circle cx="220" cy="61" r="25.5" fill="none" stroke="url(#wordGlow)" stroke-width="8.5"/>
+    <path d="M212 59L220 52V71" fill="none" stroke="#36D4E0" stroke-width="6.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="252" y="84" fill="url(#wordGlow)" font-family="Avenir Next Rounded, Nunito Sans, SF Pro Rounded, -apple-system, sans-serif" font-size="66" font-weight="700" letter-spacing="-1.7" textLength="68" lengthAdjust="spacingAndGlyphs">ne</text>
+    <text x="2" y="128" fill="#65749A" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="28" font-weight="600" letter-spacing="8">灵一</text>
+  </g>
+</svg>
